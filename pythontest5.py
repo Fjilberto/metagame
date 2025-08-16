@@ -18,6 +18,7 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 try:
     meta = pd.read_excel("metaR.xlsx")
     cruces = pd.read_excel("cruces.xlsx")
+    print("Datos cargados exitosamente.")
 except FileNotFoundError as e:
     # Si los archivos no se encuentran, la app se iniciará y mostrará este error
     app.layout = html.Div([
