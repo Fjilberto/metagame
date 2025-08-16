@@ -10,59 +10,39 @@ import dash_bootstrap_components as dbc
 from scipy.stats import norm
 import plotly.express as px
 
-# El objeto 'app' debe ser definido antes de cualquier otra cosa.
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # ========== CARGAR DATOS ==========
-# Este bloque de try-except cargará los datos de manera segura.
 try:
     meta = pd.read_excel("metaR.xlsx")
     cruces = pd.read_excel("cruces.xlsx")
-    # Convertir fechas
+    # Convertir fechas y tipos (esto SOLO se ejecuta si la carga es exitosa)
     meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d', errors='coerce')
     cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
-    # Convertir Top1 y Top3 a numérico
     meta['Top1'] = pd.to_numeric(meta['Top1'])
     meta['Top3'] = pd.to_numeric(meta['Top3'])
-    
     print("Datos cargados exitosamente.")
 except FileNotFoundError as e:
-    # Si los archivos no se encuentran, la app se iniciará y mostrará este error
     app.layout = html.Div([
         html.H1("Error de carga de datos"),
         html.P(f"No se pudieron encontrar los archivos de datos. Asegúrate de que los archivos metaR.xlsx y cruces.xlsx estén en la misma carpeta que tu código. Error: {e}"),
     ])
-    meta = pd.DataFrame() # DataFrame vacío para evitar errores posteriores
-    cruces = pd.DataFrame() # DataFrame vacío
+    meta = pd.DataFrame()
+    cruces = pd.DataFrame()
 except Exception as e:
-    # Capturar cualquier otro error durante la lectura de los archivos
     app.layout = html.Div([
         html.H1("Error inesperado al cargar datos"),
         html.P(f"Ocurrió un error inesperado al leer los archivos de datos. Error: {e}"),
     ])
     meta = pd.DataFrame()
     cruces = pd.DataFrame()
-
-# Convertir fechas
-meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d',errors='coerce')
-cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d',errors='coerce')
-
-# Convertir Top1 y Top3 a numérico
-meta['Top1'] = pd.to_numeric(meta['Top1'])
-meta['Top3'] = pd.to_numeric(meta['Top3'])
-
+    
 # Definir eventos
 eventos = {
     "Mazos jugados desde el baneo/desbaneo Deadly, Tide y otros": datetime(2025, 3, 31),
     "Mazos jugados desde el baneo de All That Glitters": datetime(2024, 5, 13),
     "Mazos jugados desde el baneo de Monastery Swiftspear": datetime(2023, 12, 4)
 }
-
-# Configurar locale a español
-#try:
-#    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')  # Para Linux/Mac
-#except:
-#    locale.setlocale(locale.LC_TIME, 'spanish')  # Para Windows
 
 # ========== UI ==========
 app.layout = dbc.Container([
@@ -1007,5 +987,3 @@ def update_heatmap(df_filtrado, min_juegos=30):
             yaxis={"visible": False}
         ))
 
-#if __name__ == '__main__':
-#    app.run(debug=True)
