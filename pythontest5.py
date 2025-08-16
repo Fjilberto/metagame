@@ -15,17 +15,8 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # ========== CARGAR DATOS ==========
 
-#trabajo
-#meta = pd.read_excel("J:/Mi unidad/pauper/metaR.xlsx")
-#cruces = pd.read_excel("J:/Mi unidad/pauper/cruces.xlsx")
-
-#juego
-meta = pd.read_excel("C:/Users/Mobious/Mi unidad/pauper/metaR.xlsx")
-cruces = pd.read_excel("C:/Users/Mobious/Mi unidad/pauper/cruces.xlsx")
-
-#ubuntu
-#meta = pd.read_excel("/home/oxus/Documents/googledrive/pauper/metaR.xlsx")
-#cruces = pd.read_excel("/home/oxus/Documents/googledrive/pauper/cruces.xlsx")
+meta = pd.read_excel("metaR.xlsx")
+cruces = pd.read_excel("cruces.xlsx")
 
 # Convertir fechas
 meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d',errors='coerce')
