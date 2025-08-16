@@ -8,7 +8,7 @@ from datetime import datetime
 from adjustText import adjust_text
 import dash_bootstrap_components as dbc
 from scipy.stats import norm
-import locale
+#import locale
 import plotly.express as px
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -43,10 +43,10 @@ eventos = {
 }
 
 # Configurar locale a español
-try:
-    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')  # Para Linux/Mac
-except:
-    locale.setlocale(locale.LC_TIME, 'spanish')  # Para Windows
+#try:
+#    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')  # Para Linux/Mac
+#except:
+#    locale.setlocale(locale.LC_TIME, 'spanish')  # Para Windows
 
 # ========== UI ==========
 app.layout = dbc.Container([
