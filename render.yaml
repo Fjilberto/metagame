@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: tu-proyecto
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn pythontest5:app" # Reemplaza 'tu_archivo' con el nombre de tu archivo Python
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.0

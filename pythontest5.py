@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output, State, callback
+from dash import dcc, html, Input, Output, State
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
@@ -10,47 +10,331 @@ import dash_bootstrap_components as dbc
 from scipy.stats import norm
 import plotly.express as px
 
-# 1. Definición del objeto 'app'
-# =================================================================
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
 
-# 2. Carga de datos
-# =================================================================
-# Cargar los datos. Si los archivos no existen, los dataframes quedarán vacíos.
-# La lógica de los callbacks se encargará del error.
-try:
-    meta = pd.read_excel("metaR.xlsx")
-    cruces = pd.read_excel("cruces.xlsx")
-    print("Datos cargados exitosamente.")
-except (FileNotFoundError, Exception) as e:
-    print(f"Error al cargar datos: {e}")
-    meta = pd.DataFrame()
-    cruces = pd.DataFrame()
+# ========== CARGAR DATOS ==========
 
-# Convertir fechas y tipos
-if not meta.empty:
-    meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d', errors='coerce')
-    meta['Top1'] = pd.to_numeric(meta['Top1'])
-    meta['Top3'] = pd.to_numeric(meta['Top3'])
-    
-if not cruces.empty:
-    cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
+meta = pd.read_excel("metaR.xlsx")
+cruces = pd.read_excel("cruces.xlsx")
 
-# 3. Definir eventos y listas de opciones
-# =================================================================
+# Convertir fechas
+meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d',errors='coerce')
+cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d',errors='coerce')
+
+# Convertir Top1 y Top3 a numérico
+meta['Top1'] = pd.to_numeric(meta['Top1'])
+meta['Top3'] = pd.to_numeric(meta['Top3'])
+
+# Definir eventos
 eventos = {
     "Mazos jugados desde el baneo/desbaneo Deadly, Tide y otros": datetime(2025, 3, 31),
     "Mazos jugados desde el baneo de All That Glitters": datetime(2024, 5, 13),
     "Mazos jugados desde el baneo de Monastery Swiftspear": datetime(2023, 12, 4)
 }
 
-if not meta.empty:
-    fechas_unicas = [{'label': i, 'value': i} for i in meta['Fecha'].dt.strftime('%Y-%m-%d').sort_values().unique()]
-else:
-    fechas_unicas = []
+# ========== UI ==========
+app.layout = dbc.Container([
+    html.H1("Metagame torneos Pauper", className="mt-3 mb-4"),
+    
+    dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    dcc.Tabs(
+                        id="tabs",
+                        value="metagame",
+                        vertical=True,
+                        parent_style={
+                            'width': '250px',  # Aumentar este valor para hacerlo más ancho
+                            'min-width': '250px',  # Ancho mínimo garantizado
+                            'margin-right': '20px'  # Espacio entre pestañas y contenido
+                        },
+                        style={
+                            'height': '100%',
+                            'border-right': '1px solid #d6d6d6',
+                            'background': '#f8f9fa'  # Fondo ligeramente diferenciado
+                        },
+                        children=[
+                            dcc.Tab(
+                                label="Metagame",
+                                value="metagame",
+                                style={
+                                    'padding': '12px 20px',  # Más espacio interno (arriba/abajo, izquierda/derecha)
+                                    'font-size': '14px',
+                                    'text-align': 'left',
+                                    'margin-bottom': '8px'  # Más espacio entre pestañas
+                                },
+                                selected_style={
+                                    'border-left': '4px solid #007bff',
+                                    'font-weight': 'bold',
+                                    'background-color': '#e9ecef'  # Fondo cuando está seleccionado
+                                }
+                            ),
+                            dcc.Tab(
+                                label="Torneos ganados o podios",
+                                value="top_distribution",
+                                style={'margin-bottom': '5px', 'padding': '10px', 'font-size': '14px'},
+                                selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
+                            ),
+                            dcc.Tab(
+                                label="Presencia mensual",
+                                value="evolution",
+                                style={'margin-bottom': '5px', 'padding': '10px', 'font-size': '14px'},
+                                selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
+                            ),
+                            dcc.Tab(
+                                label="Winrate por mazo",
+                                value="winrate",
+                                style={'margin-bottom': '5px', 'padding': '10px', 'font-size': '14px'},
+                                selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
+                            ),
+                            dcc.Tab(
+                                label="Winrate vs Porcentaje de Juego",
+                                value="winrate_juego",
+                                style={'margin-bottom': '5px', 'padding': '10px', 'font-size': '14px'},
+                                selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
+                            ),
+                            dcc.Tab(
+                                label="Cruces entre mazos",
+                                value="heatmap",
+                                style={'padding': '10px', 'font-size': '14px'},
+                                selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
+                            ),
+                        ]
+                    ),
+                    
+                    # Filtros condicionales
+                    html.Div(id="filtro-metagame", children=[
+                        dbc.RadioItems(
+                            id="filtro-metagame-radio",
+                            options=[
+                                {"label": "Por evento", "value": "evento"},
+                                {"label": "Por rango de fechas", "value": "fechas"},
+                                {"label": "Torneo específico", "value": "fecha_puntual"}
+                            ],
+                            value="evento"
+                        )
+                    ], style={'display': 'none'}),
+                    
+                    html.Div(id="filtro-winrate", children=[
+                        dbc.RadioItems(
+                            id="filtro-winrate-radio",
+                            options=[
+                                {"label": "Por evento", "value": "evento"},
+                                {"label": "Por rango de fechas", "value": "fechas"}
+                            ],
+                            value="evento"
+                        )
+                    ], style={'display': 'none'}),
+                    
+                    html.Div(id="filtro-heatmap", children=[
+                        dbc.RadioItems(
+                            id="filtro-heatmap-radio",
+                            options=[{"label": "Por evento", "value": "evento"}],
+                            value="evento"
+                        )
+                    ], style={'display': 'none'}),
+                    
+                    # Selector de evento (compartido)
+                    dcc.Dropdown(
+                        id="evento-dropdown",
+                        options=[{"label": k, "value": k} for k in eventos.keys()],
+                        style={'font-size': '12px'},
+                        value=list(eventos.keys())[0],
+                        disabled=False,
+                        className="mb-3"
+                    ),
+                    
+                    # Selector de rango de fechas
+                    dcc.DatePickerRange(
+                        id="fechas-picker",
+                        start_date=meta['Fecha'].min(),
+                        end_date=meta['Fecha'].max(),
+                        display_format='YYYY-MM-DD',
+                        disabled=True,
+                        className="mb-3"
+                    ),
+                    
+                    # Selector de fecha puntual
+                    dcc.Dropdown(
+                        id="fecha-unica-dropdown",
+                        options=[{"label": str(date.date()), "value": date} 
+                                for date in sorted(meta['Fecha'].unique(), reverse=True)],
+                        disabled=True,
+                        className="mb-3"
+                    ),
+                    
+                    # Selector de color para Winrate vs Porcentaje
+                    dcc.Dropdown(
+                        id="color-opcion-dropdown",
+                        options=[
+                            {"label": "Torneos ganados", "value": "Top1"},
+                            {"label": "Presencia en podio", "value": "Top3"}
+                        ],
+                        value="Top1",
+                        disabled=True,
+                        className="mb-3"
+                    ),
+                    
+                    html.Label("Top mazos más jugados:"),
+                    dcc.Slider(
+                        id='top-mazos-slider',
+                        min=5,
+                        max=20,
+                        step=1,
+                        value=10,
+                        marks={i: str(i) for i in range(5, 21, 5)}
+                    ),
 
-# 4. Lógica de visualización (funciones para generar gráficos)
-# =================================================================
+                    html.Label("Cantidad mazos más jugados"),
+                    dcc.Slider(
+                        id='top-mazos-slider2',
+                        min=3,
+                        max=8,
+                        step=1,
+                        value=5,
+                        marks={i: str(i) for i in range(3, 9)}
+                    ),
+
+                    html.Label("Minimo de partidas:"),
+                    dcc.Slider(
+                        id="min-juegos-slider",
+                        min=20,
+                        max=50,
+                        step=1,
+                        value=30,
+                        marks={i: str(i) for i in range(20, 51, 5)},
+                        tooltip={"placement": "bottom", "always_visible": True},
+                        #disabled=True,
+                        className="mb-4"
+                    )
+                ])
+            ])
+        ], md=3),
+        
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.Div(id="tab-content")
+                ])
+            ], style={"height": "650px"})
+        ], md=9)
+    ])
+], fluid=True)
+
+# ========== CALLBACKS ==========
+@app.callback(
+    [Output("filtro-metagame", "style"),
+     Output("filtro-winrate", "style"),
+     Output("filtro-heatmap", "style"),
+     Output("evento-dropdown", "disabled"),
+     Output("fechas-picker", "disabled"),
+     Output("fecha-unica-dropdown", "disabled"),
+     Output("color-opcion-dropdown", "disabled"),
+     Output("min-juegos-slider", "disabled"),
+     Output("top-mazos-slider", "disabled"),
+     Output("top-mazos-slider2", "disabled")],
+    [Input("tabs", "value")]
+)
+def update_filtros_visibilidad(tab):
+    if tab == "metagame":
+        return (
+            {"display": "block"}, {"display": "none"}, {"display": "none"},
+            False, False, False, True, True, False, True  # top-mazos-slider2 deshabilitado
+        )
+    elif tab == "winrate":
+        return (
+            {"display": "none"}, {"display": "none"}, {"display": "none"},
+            False, True, True, True, False, True, True
+        )
+    elif tab == "winrate_juego":
+        return (
+            {"display": "none"}, {"display": "block"}, {"display": "none"},
+            False, False, True, False, True, True, True
+        )
+    elif tab == "heatmap":
+        return (
+            {"display": "none"}, {"display": "none"}, {"display": "block"},
+            False, True, True, True, False, True, True
+        )
+    elif tab == "top_distribution":
+        return (
+            {"display": "none"}, {"display": "none"}, {"display": "none"},
+            False, True, True, False, True, True, True
+        )
+    elif tab == "evolution":
+        return (
+            {"display": "none"}, {"display": "none"}, {"display": "none"},
+            False, True, True, True, True, True, False  # Solo top-mazos-slider2 habilitado
+        )
+
+@app.callback(
+    Output("tab-content", "children"),
+    [Input("tabs", "value"),
+     Input("filtro-metagame-radio", "value"),
+     Input("filtro-winrate-radio", "value"),
+     Input("filtro-heatmap-radio", "value"),
+     Input("evento-dropdown", "value"),
+     Input("fechas-picker", "start_date"),
+     Input("fechas-picker", "end_date"),
+     Input("fecha-unica-dropdown", "value"),
+     Input("color-opcion-dropdown", "value"),
+     Input("top-mazos-slider", "value"),
+     Input("top-mazos-slider2", "value"),
+     Input("min-juegos-slider", "value")]
+)
+def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_heatmap=None,
+                     evento=None, start_date=None, end_date=None, fecha_unica=None,
+                     color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None):
+    
+    # Filtrar datos según la pestaña activa
+    if tab == "metagame":
+        if filtro_metagame == "evento":
+            fecha_corte = eventos[evento]
+            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        elif filtro_metagame == "fechas":
+            df_filtrado = meta[(meta['Fecha'] >= start_date) &
+                              (meta['Fecha'] <= end_date)]
+        else:  # fecha_puntual
+            df_filtrado = meta[meta['Fecha'] == fecha_unica]
+
+        return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
+    
+    elif tab == "evolution":
+        fecha_corte = eventos[evento]
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_evolution(df_filtrado, n_top_evolution)  # Usar slider2 para evolución
+
+    elif tab == "winrate":
+        if filtro_winrate == "evento":
+            fecha_corte = eventos[evento]
+            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        else:
+            df_filtrado = meta[(meta['Fecha'] >= start_date) &
+                              (meta['Fecha'] <= end_date)]
+        return update_winrate(df_filtrado, min_juegos)
+
+    elif tab == "winrate_juego":
+        if filtro_winrate == "evento":
+            fecha_corte = eventos[evento]
+            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        else:
+            df_filtrado = meta[(meta['Fecha'] >= start_date) &
+                              (meta['Fecha'] <= end_date)]
+        return update_winrate_juego(df_filtrado, color_opcion)
+
+    elif tab == "heatmap":
+        fecha_corte = eventos[evento]
+        df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
+        return update_heatmap(df_filtrado, min_juegos)
+    
+    elif tab == "top_distribution":
+        fecha_corte = eventos[evento]
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_top_distribution(df_filtrado, color_opcion)
+        
+# ========== FUNCIONES PARA ACTUALIZAR GRÁFICOS ==========
 def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top=20):
     if df.empty:
         return dcc.Graph(figure=go.Figure().update_layout(
@@ -310,7 +594,7 @@ def update_evolution(df, n_top=5):
             y=-0.3,  # Posición bajo el gráfico
             xanchor="center",
             x=0.5,
-            font=dict(size=10)
+            font=dict(size=10)  # <-- Se eliminó la coma final que causaba el error
         ),
         margin=dict(b=150, t=60, l=60, r=40)  # Márgenes ajustados
     )
@@ -690,113 +974,6 @@ def update_heatmap(df_filtrado, min_juegos=30):
             xaxis={"visible": False},
             yaxis={"visible": False}
         ))
-    
-# 5. Layout de la aplicación
-# =================================================================
-app.layout = html.Div([
-    dbc.Container([
-        html.H1("Análisis de Metagame de Pioneer", className="text-center my-4"),
-        dbc.Tabs(
-            id="tabs",
-            active_tab="metagame",
-            children=[
-                dbc.Tab(label="Metagame", tab_id="metagame"),
-                dbc.Tab(label="Evolución", tab_id="evolution"),
-                dbc.Tab(label="Winrate", tab_id="winrate"),
-                dbc.Tab(label="Winrate por juego", tab_id="winrate_juego"),
-                dbc.Tab(label="Heatmap", tab_id="heatmap"),
-                dbc.Tab(label="Distribución Top", tab_id="top_distribution"),
-            ],
-            className="nav-fill mb-3"
-        ),
-        dbc.Card(id="tab-content", body=True, className="mt-3")
-    ], className="bg-light p-4 rounded")
-])
 
-# 6. Callbacks
-# =================================================================
-@callback(
-    Output("tab-content", "children"),
-    [Input("tabs", "value"),
-     Input("filtro-metagame-radio", "value"),
-     Input("filtro-winrate-radio", "value"),
-     Input("filtro-heatmap-radio", "value"),
-     Input("evento-dropdown", "value"),
-     Input("fechas-picker", "start_date"),
-     Input("fechas-picker", "end_date"),
-     Input("fecha-unica-dropdown", "value"),
-     Input("color-opcion-dropdown", "value"),
-     Input("top-mazos-slider", "value"),
-     Input("top-mazos-slider2", "value"),
-     Input("min-juegos-slider", "value")]
-)
-def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_heatmap=None,
-                     evento=None, start_date=None, end_date=None, fecha_unica=None,
-                     color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None):
-    
-    if meta.empty or cruces.empty:
-        return html.Div([
-            html.H3("Error: No se pudieron cargar los datos.", className="text-danger"),
-            html.P("Por favor, verifica que los archivos metaR.xlsx y cruces.xlsx existan en la misma carpeta que tu código.")
-        ])
-    
-    if tab == "metagame":
-        if filtro_metagame == "evento" and evento:
-            fecha_corte = eventos.get(evento)
-            if fecha_corte:
-                df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-            else:
-                df_filtrado = meta.copy()
-        elif filtro_metagame == "fechas" and start_date and end_date:
-            df_filtrado = meta[(meta['Fecha'] >= start_date) &
-                              (meta['Fecha'] <= end_date)]
-        elif filtro_metagame == "fecha_puntual" and fecha_unica:
-            df_filtrado = meta[meta['Fecha'] == fecha_unica]
-        else:
-             fecha_corte = eventos.get(list(eventos.keys())[0])
-             if fecha_corte:
-                 df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-             else:
-                 df_filtrado = meta.copy()
-
-        return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
-    
-    elif tab == "evolution":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_evolution(df_filtrado, n_top_evolution)
-    
-    elif tab == "winrate":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_winrate(df_filtrado, min_juegos)
-
-    elif tab == "winrate_juego":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_winrate_juego(df_filtrado, color_opcion)
-
-    elif tab == "heatmap":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
-        return update_heatmap(df_filtrado, min_juegos)
-    
-    elif tab == "top_distribution":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_top_distribution(df_filtrado, color_opcion)
+if __name__ == '__main__':
+    app.run(debug=True)
