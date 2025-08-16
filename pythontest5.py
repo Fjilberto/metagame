@@ -299,7 +299,7 @@ def update_filtros_visibilidad(tab):
 def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_heatmap=None,
                      evento=None, start_date=None, end_date=None, fecha_unica=None,
                      color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None):
-    
+
     # -------------------------------------------------------------------------
     # CORRECCIÓN: Manejar los valores iniciales que son None.
     # Si la aplicación no tiene datos, retorna un mensaje de error.
@@ -324,23 +324,23 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
         elif filtro_metagame == "fecha_puntual" and fecha_unica:
             df_filtrado = meta[meta['Fecha'] == fecha_unica]
         else: # En el inicio, usar el filtro por evento por defecto
-             fecha_corte = eventos.get(evento)
+             fecha_corte = eventos.get(list(eventos.keys())[0])
              if fecha_corte:
                  df_filtrado = meta[meta['Fecha'] >= fecha_corte]
              else:
                  df_filtrado = meta.copy()
 
         return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
-    
-    elif tab == "evolution":
-        fecha_corte = eventos.get(evento)
-        if fecha_corte:
-            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        else:
-            df_filtrado = meta.copy()
 
+    elif tab == "evolution":
+        # Asegurarse de que 'evento' no sea None
+        if not evento:
+            evento = list(eventos.keys())[0]  # Usar un valor por defecto
+        
+        fecha_corte = eventos.get(evento)
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
         return update_evolution(df_filtrado, n_top_evolution)
-    
+
     # Añade validaciones similares para las otras pestañas
     elif tab == "winrate":
         if filtro_winrate == "evento" and evento:
@@ -369,11 +369,19 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
         return update_winrate_juego(df_filtrado, color_opcion)
 
     elif tab == "heatmap":
+        # Asegurarse de que 'evento' no sea None
+        if not evento:
+            evento = list(eventos.keys())[0] # Usar un valor por defecto
+        
         fecha_corte = eventos.get(evento)
         df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
         return update_heatmap(df_filtrado, min_juegos)
     
     elif tab == "top_distribution":
+        # Asegurarse de que 'evento' no sea None
+        if not evento:
+            evento = list(eventos.keys())[0] # Usar un valor por defecto
+        
         fecha_corte = eventos.get(evento)
         df_filtrado = meta[meta['Fecha'] >= fecha_corte]
         return update_top_distribution(df_filtrado, color_opcion)
