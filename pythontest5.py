@@ -982,5 +982,5 @@ def update_heatmap(df_filtrado, min_juegos=30):
             yaxis={"visible": False}
         ))
 
-if __name__ == '__main__':
-    app.run(debug=True)
+#if __name__ == '__main__':
+#    app.run(debug=True)
