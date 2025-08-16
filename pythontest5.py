@@ -10,15 +10,17 @@ import dash_bootstrap_components as dbc
 from scipy.stats import norm
 import plotly.express as px
 
-# El objeto 'app' debe ser definido antes de cualquier otra cosa.
+# 1. Definición del objeto 'app'
+# =================================================================
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# ================== CARGAR DATOS ==================
+# 2. Carga de datos
+# =================================================================
 # Este bloque de try-except cargará los datos de manera segura.
 try:
     meta = pd.read_excel("metaR.xlsx")
     cruces = pd.read_excel("cruces.xlsx")
-    
+
     # Convertir fechas y tipos (esto SOLO se ejecuta si la carga es exitosa)
     meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d', errors='coerce')
     cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
@@ -43,185 +45,21 @@ except Exception as e:
     meta = pd.DataFrame()
     cruces = pd.DataFrame()
 
-# ================== DEFINIR EVENTOS ==================
+# 3. Definir eventos y listas de opciones
+# =================================================================
 eventos = {
     "Mazos jugados desde el baneo/desbaneo Deadly, Tide y otros": datetime(2025, 3, 31),
     "Mazos jugados desde el baneo de All That Glitters": datetime(2024, 5, 13),
     "Mazos jugados desde el baneo de Monastery Swiftspear": datetime(2023, 12, 4)
 }
 
-# Obtener la lista de fechas únicas para el dropdown
 if not meta.empty:
     fechas_unicas = [{'label': i, 'value': i} for i in meta['Fecha'].dt.strftime('%Y-%m-%d').sort_values().unique()]
 else:
     fechas_unicas = []
 
-# ================== LÓGICA DE VISUALIZACIÓN ==================
-# Funciones para generar gráficos
-def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top):
-    if df.empty:
-        return html.Div("No hay datos para mostrar con los filtros seleccionados.", className="alert alert-warning")
-    
-    # Lógica de cálculo y visualización del metagame
-    # Tu código actual para la visualización del metagame va aquí...
-    # ...
-
-    # Ejemplo de un gráfico de prueba para asegurar que no falle
-    fig = px.bar(df, x="Arquetipo", y="Total", title="Metagame")
-    return dcc.Graph(figure=fig)
-
-def update_evolution(df, n_top_evolution):
-    if df.empty:
-        return html.Div("No hay datos para mostrar con los filtros seleccionados.", className="alert alert-warning")
-    
-    # Lógica de cálculo y visualización de la evolución
-    # ...
-    fig = px.line(df.groupby('Fecha')['Total'].sum().reset_index(), x='Fecha', y='Total')
-    return dcc.Graph(figure=fig)
-
-def update_winrate(df, min_juegos):
-    if df.empty:
-        return html.Div("No hay datos para mostrar con los filtros seleccionados.", className="alert alert-warning")
-    
-    # Lógica de cálculo y visualización del winrate
-    # ...
-    return html.Div("Gráfico de Winrate")
-
-def update_winrate_juego(df, color_opcion):
-    if df.empty:
-        return html.Div("No hay datos para mostrar con los filtros seleccionados.", className="alert alert-warning")
-    
-    # Lógica de cálculo y visualización del winrate por juego
-    # ...
-    return html.Div("Gráfico de Winrate por juego")
-
-def update_heatmap(df, min_juegos):
-    if df.empty:
-        return html.Div("No hay datos para mostrar con los filtros seleccionados.", className="alert alert-warning")
-    
-    # Lógica de cálculo y visualización del heatmap
-    # ...
-    return html.Div("Gráfico de Heatmap")
-
-def update_top_distribution(df, color_opcion):
-    if df.empty:
-        return html.Div("No hay datos para mostrar con los filtros seleccionados.", className="alert alert-warning")
-    
-    # Lógica de cálculo y visualización de la distribución
-    # ...
-    return html.Div("Gráfico de Distribución")
-
-# ================== LAYOUT DE LA APLICACIÓN ==================
-# Aquí debes colocar todo el código de tu layout
-app.layout = html.Div([
-    dbc.Container([
-        html.H1("Análisis de Metagame de Pioneer", className="text-center my-4"),
-        dbc.Tabs(
-            id="tabs",
-            active_tab="metagame",
-            children=[
-                dbc.Tab(label="Metagame", tab_id="metagame"),
-                dbc.Tab(label="Evolución", tab_id="evolution"),
-                dbc.Tab(label="Winrate", tab_id="winrate"),
-                dbc.Tab(label="Winrate por juego", tab_id="winrate_juego"),
-                dbc.Tab(label="Heatmap", tab_id="heatmap"),
-                dbc.Tab(label="Distribución Top", tab_id="top_distribution"),
-            ],
-            className="nav-fill mb-3"
-        ),
-        dbc.Card(id="tab-content", body=True, className="mt-3")
-    ], className="bg-light p-4 rounded")
-])
-
-# ================== CALLBACKS ==================
-@callback(
-    Output("tab-content", "children"),
-    [Input("tabs", "value"),
-     Input("filtro-metagame-radio", "value"),
-     Input("filtro-winrate-radio", "value"),
-     Input("filtro-heatmap-radio", "value"),
-     Input("evento-dropdown", "value"),
-     Input("fechas-picker", "start_date"),
-     Input("fechas-picker", "end_date"),
-     Input("fecha-unica-dropdown", "value"),
-     Input("color-opcion-dropdown", "value"),
-     Input("top-mazos-slider", "value"),
-     Input("top-mazos-slider2", "value"),
-     Input("min-juegos-slider", "value")]
-)
-def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_heatmap=None,
-                     evento=None, start_date=None, end_date=None, fecha_unica=None,
-                     color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None):
-    
-    if meta.empty or cruces.empty:
-        return html.Div([
-            html.H3("Error: No se pudieron cargar los datos.", className="text-danger"),
-            html.P("Por favor, verifica que los archivos metaR.xlsx y cruces.xlsx existan en la misma carpeta que tu código.")
-        ])
-    
-    # Filtrar datos según la pestaña activa
-    if tab == "metagame":
-        if filtro_metagame == "evento" and evento:
-            fecha_corte = eventos.get(evento)
-            if fecha_corte:
-                df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-            else:
-                df_filtrado = meta.copy()
-        elif filtro_metagame == "fechas" and start_date and end_date:
-            df_filtrado = meta[(meta['Fecha'] >= start_date) &
-                              (meta['Fecha'] <= end_date)]
-        elif filtro_metagame == "fecha_puntual" and fecha_unica:
-            df_filtrado = meta[meta['Fecha'] == fecha_unica]
-        else:
-             fecha_corte = eventos.get(list(eventos.keys())[0])
-             if fecha_corte:
-                 df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-             else:
-                 df_filtrado = meta.copy()
-
-        return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
-    
-    elif tab == "evolution":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_evolution(df_filtrado, n_top_evolution)
-    
-    elif tab == "winrate":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_winrate(df_filtrado, min_juegos)
-
-    elif tab == "winrate_juego":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_winrate_juego(df_filtrado, color_opcion)
-
-    elif tab == "heatmap":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
-        return update_heatmap(df_filtrado, min_juegos)
-    
-    elif tab == "top_distribution":
-        if not evento:
-            evento = list(eventos.keys())[0]
-        
-        fecha_corte = eventos.get(evento)
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_top_distribution(df_filtrado, color_opcion)
-        
-# ========== FUNCIONES PARA ACTUALIZAR GRÁFICOS ==========
+# 4. Lógica de visualización (funciones para generar gráficos)
+# =================================================================
 def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top=20):
     if df.empty:
         return dcc.Graph(figure=go.Figure().update_layout(
@@ -481,7 +319,7 @@ def update_evolution(df, n_top=5):
             y=-0.3,  # Posición bajo el gráfico
             xanchor="center",
             x=0.5,
-            font=dict(size=10)  # <-- Se eliminó la coma final que causaba el error
+            font=dict(size=10)
         ),
         margin=dict(b=150, t=60, l=60, r=40)  # Márgenes ajustados
     )
@@ -861,4 +699,113 @@ def update_heatmap(df_filtrado, min_juegos=30):
             xaxis={"visible": False},
             yaxis={"visible": False}
         ))
+    
+# 5. Layout de la aplicación
+# =================================================================
+app.layout = html.Div([
+    dbc.Container([
+        html.H1("Análisis de Metagame de Pioneer", className="text-center my-4"),
+        dbc.Tabs(
+            id="tabs",
+            active_tab="metagame",
+            children=[
+                dbc.Tab(label="Metagame", tab_id="metagame"),
+                dbc.Tab(label="Evolución", tab_id="evolution"),
+                dbc.Tab(label="Winrate", tab_id="winrate"),
+                dbc.Tab(label="Winrate por juego", tab_id="winrate_juego"),
+                dbc.Tab(label="Heatmap", tab_id="heatmap"),
+                dbc.Tab(label="Distribución Top", tab_id="top_distribution"),
+            ],
+            className="nav-fill mb-3"
+        ),
+        dbc.Card(id="tab-content", body=True, className="mt-3")
+    ], className="bg-light p-4 rounded")
+])
 
+# 6. Callbacks
+# =================================================================
+@callback(
+    Output("tab-content", "children"),
+    [Input("tabs", "value"),
+     Input("filtro-metagame-radio", "value"),
+     Input("filtro-winrate-radio", "value"),
+     Input("filtro-heatmap-radio", "value"),
+     Input("evento-dropdown", "value"),
+     Input("fechas-picker", "start_date"),
+     Input("fechas-picker", "end_date"),
+     Input("fecha-unica-dropdown", "value"),
+     Input("color-opcion-dropdown", "value"),
+     Input("top-mazos-slider", "value"),
+     Input("top-mazos-slider2", "value"),
+     Input("min-juegos-slider", "value")]
+)
+def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_heatmap=None,
+                     evento=None, start_date=None, end_date=None, fecha_unica=None,
+                     color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None):
+    
+    if meta.empty or cruces.empty:
+        return html.Div([
+            html.H3("Error: No se pudieron cargar los datos.", className="text-danger"),
+            html.P("Por favor, verifica que los archivos metaR.xlsx y cruces.xlsx existan en la misma carpeta que tu código.")
+        ])
+    
+    if tab == "metagame":
+        if filtro_metagame == "evento" and evento:
+            fecha_corte = eventos.get(evento)
+            if fecha_corte:
+                df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+            else:
+                df_filtrado = meta.copy()
+        elif filtro_metagame == "fechas" and start_date and end_date:
+            df_filtrado = meta[(meta['Fecha'] >= start_date) &
+                              (meta['Fecha'] <= end_date)]
+        elif filtro_metagame == "fecha_puntual" and fecha_unica:
+            df_filtrado = meta[meta['Fecha'] == fecha_unica]
+        else:
+             fecha_corte = eventos.get(list(eventos.keys())[0])
+             if fecha_corte:
+                 df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+             else:
+                 df_filtrado = meta.copy()
+
+        return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
+    
+    elif tab == "evolution":
+        if not evento:
+            evento = list(eventos.keys())[0]
+        
+        fecha_corte = eventos.get(evento)
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_evolution(df_filtrado, n_top_evolution)
+    
+    elif tab == "winrate":
+        if not evento:
+            evento = list(eventos.keys())[0]
+        
+        fecha_corte = eventos.get(evento)
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_winrate(df_filtrado, min_juegos)
+
+    elif tab == "winrate_juego":
+        if not evento:
+            evento = list(eventos.keys())[0]
+        
+        fecha_corte = eventos.get(evento)
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_winrate_juego(df_filtrado, color_opcion)
+
+    elif tab == "heatmap":
+        if not evento:
+            evento = list(eventos.keys())[0]
+        
+        fecha_corte = eventos.get(evento)
+        df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
+        return update_heatmap(df_filtrado, min_juegos)
+    
+    elif tab == "top_distribution":
+        if not evento:
+            evento = list(eventos.keys())[0]
+        
+        fecha_corte = eventos.get(evento)
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_top_distribution(df_filtrado, color_opcion)
