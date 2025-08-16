@@ -235,7 +235,6 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 # ========== CALLBACKS ==========
-# ========== CALLBACKS ==========
 @app.callback(
     [Output("filtro-metagame", "style"),
      Output("filtro-winrate", "style"),
@@ -281,6 +280,7 @@ def update_filtros_visibilidad(tab):
             False, True, True, True, True, True, False  # Solo top-mazos-slider2 habilitado
         )
 
+# ========== CALLBACKS ==========
 @app.callback(
     Output("tab-content", "children"),
     [Input("tabs", "value"),
@@ -300,49 +300,81 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
                      evento=None, start_date=None, end_date=None, fecha_unica=None,
                      color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None):
     
+    # -------------------------------------------------------------------------
+    # CORRECCIÓN: Manejar los valores iniciales que son None.
+    # Si la aplicación no tiene datos, retorna un mensaje de error.
+    if meta.empty or cruces.empty:
+        return html.Div([
+            html.H3("Error: No se pudieron cargar los datos.", className="text-danger"),
+            html.P("Por favor, verifica que los archivos metaR.xlsx y cruces.xlsx existan en el repositorio.")
+        ])
+    # -------------------------------------------------------------------------
+
     # Filtrar datos según la pestaña activa
     if tab == "metagame":
-        if filtro_metagame == "evento":
-            fecha_corte = eventos[evento]
-            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        elif filtro_metagame == "fechas":
+        if filtro_metagame == "evento" and evento:
+            fecha_corte = eventos.get(evento)
+            if fecha_corte:
+                df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+            else:
+                df_filtrado = meta.copy() # O un DataFrame vacío si no hay evento
+        elif filtro_metagame == "fechas" and start_date and end_date:
             df_filtrado = meta[(meta['Fecha'] >= start_date) &
                               (meta['Fecha'] <= end_date)]
-        else:  # fecha_puntual
+        elif filtro_metagame == "fecha_puntual" and fecha_unica:
             df_filtrado = meta[meta['Fecha'] == fecha_unica]
+        else: # En el inicio, usar el filtro por evento por defecto
+             fecha_corte = eventos.get(evento)
+             if fecha_corte:
+                 df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+             else:
+                 df_filtrado = meta.copy()
 
         return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
     
     elif tab == "evolution":
-        fecha_corte = eventos[evento]
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_evolution(df_filtrado, n_top_evolution)  # Usar slider2 para evolución
-
-    elif tab == "winrate":
-        if filtro_winrate == "evento":
-            fecha_corte = eventos[evento]
+        fecha_corte = eventos.get(evento)
+        if fecha_corte:
             df_filtrado = meta[meta['Fecha'] >= fecha_corte]
         else:
-            df_filtrado = meta[(meta['Fecha'] >= start_date) &
+            df_filtrado = meta.copy()
+
+        return update_evolution(df_filtrado, n_top_evolution)
+    
+    # Añade validaciones similares para las otras pestañas
+    elif tab == "winrate":
+        if filtro_winrate == "evento" and evento:
+            fecha_corte = eventos.get(evento)
+            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        elif filtro_winrate == "fechas" and start_date and end_date:
+             df_filtrado = meta[(meta['Fecha'] >= start_date) &
                               (meta['Fecha'] <= end_date)]
+        else:
+            fecha_corte = eventos.get(list(eventos.keys())[0])
+            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+            
         return update_winrate(df_filtrado, min_juegos)
 
     elif tab == "winrate_juego":
-        if filtro_winrate == "evento":
-            fecha_corte = eventos[evento]
+        if filtro_winrate == "evento" and evento:
+            fecha_corte = eventos.get(evento)
             df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        else:
+        elif filtro_winrate == "fechas" and start_date and end_date:
             df_filtrado = meta[(meta['Fecha'] >= start_date) &
                               (meta['Fecha'] <= end_date)]
+        else:
+            fecha_corte = eventos.get(list(eventos.keys())[0])
+            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+
         return update_winrate_juego(df_filtrado, color_opcion)
 
     elif tab == "heatmap":
-        fecha_corte = eventos[evento]
+        fecha_corte = eventos.get(evento)
         df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
         return update_heatmap(df_filtrado, min_juegos)
     
     elif tab == "top_distribution":
-        fecha_corte = eventos[evento]
+        fecha_corte = eventos.get(evento)
         df_filtrado = meta[meta['Fecha'] >= fecha_corte]
         return update_top_distribution(df_filtrado, color_opcion)
         
