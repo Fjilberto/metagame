@@ -8,16 +8,23 @@ from datetime import datetime
 from adjustText import adjust_text
 import dash_bootstrap_components as dbc
 from scipy.stats import norm
-#import locale
 import plotly.express as px
 
+# El objeto 'app' debe ser definido antes de cualquier otra cosa.
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # ========== CARGAR DATOS ==========
-
+# Este bloque de try-except cargará los datos de manera segura.
 try:
     meta = pd.read_excel("metaR.xlsx")
     cruces = pd.read_excel("cruces.xlsx")
+    # Convertir fechas
+    meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d', errors='coerce')
+    cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
+    # Convertir Top1 y Top3 a numérico
+    meta['Top1'] = pd.to_numeric(meta['Top1'])
+    meta['Top3'] = pd.to_numeric(meta['Top3'])
+    
     print("Datos cargados exitosamente.")
 except FileNotFoundError as e:
     # Si los archivos no se encuentran, la app se iniciará y mostrará este error
