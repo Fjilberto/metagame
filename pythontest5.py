@@ -16,34 +16,25 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # 2. Carga de datos
 # =================================================================
-# Este bloque de try-except cargará los datos de manera segura.
+# Cargar los datos. Si los archivos no existen, los dataframes quedarán vacíos.
+# La lógica de los callbacks se encargará del error.
 try:
     meta = pd.read_excel("metaR.xlsx")
     cruces = pd.read_excel("cruces.xlsx")
+    print("Datos cargados exitosamente.")
+except (FileNotFoundError, Exception) as e:
+    print(f"Error al cargar datos: {e}")
+    meta = pd.DataFrame()
+    cruces = pd.DataFrame()
 
-    # Convertir fechas y tipos (esto SOLO se ejecuta si la carga es exitosa)
+# Convertir fechas y tipos
+if not meta.empty:
     meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d', errors='coerce')
-    cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
     meta['Top1'] = pd.to_numeric(meta['Top1'])
     meta['Top3'] = pd.to_numeric(meta['Top3'])
     
-    print("Datos cargados exitosamente.")
-except FileNotFoundError as e:
-    # Si los archivos no se encuentran, la app se iniciará y mostrará este error
-    app.layout = html.Div([
-        html.H1("Error de carga de datos"),
-        html.P(f"No se pudieron encontrar los archivos de datos. Asegúrate de que los archivos metaR.xlsx y cruces.xlsx estén en la misma carpeta que tu código. Error: {e}"),
-    ])
-    meta = pd.DataFrame()
-    cruces = pd.DataFrame()
-except Exception as e:
-    # Capturar cualquier otro error durante la lectura de los archivos
-    app.layout = html.Div([
-        html.H1("Error inesperado al cargar datos"),
-        html.P(f"Ocurrió un error inesperado al leer los archivos de datos. Error: {e}"),
-    ])
-    meta = pd.DataFrame()
-    cruces = pd.DataFrame()
+if not cruces.empty:
+    cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
 
 # 3. Definir eventos y listas de opciones
 # =================================================================
