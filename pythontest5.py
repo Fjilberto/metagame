@@ -28,6 +28,7 @@ meta['Top3'] = pd.to_numeric(meta['Top3'])
 
 # Definir eventos
 eventos = {
+    "Mazos jugados desde el baneo de High Tide": datetime(2025, 11, 10),
     "Mazos jugados desde el baneo/desbaneo Deadly, Tide y otros": datetime(2025, 3, 31),
     "Mazos jugados desde el baneo de All That Glitters": datetime(2024, 5, 13),
     "Mazos jugados desde el baneo de Monastery Swiftspear": datetime(2023, 12, 4)
