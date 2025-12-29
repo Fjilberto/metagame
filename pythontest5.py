@@ -85,6 +85,12 @@ app.layout = dbc.Container([
                                 selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
                             ),
                             dcc.Tab(
+                                label="Tasa de Conversión",
+                                value="conversion_table",
+                                style={'margin-bottom': '5px', 'padding': '10px', 'font-size': '14px'},
+                                selected_style={'border-bottom': '3px solid #007bff', 'font-weight': 'bold'}
+                            ),
+                            dcc.Tab(
                                 label="Winrate por mazo",
                                 value="winrate",
                                 style={'margin-bottom': '5px', 'padding': '10px', 'font-size': '14px'},
@@ -244,6 +250,11 @@ def update_filtros_visibilidad(tab):
             {"display": "block"}, {"display": "none"}, {"display": "none"},
             False, False, False, True, True, False, True  # top-mazos-slider2 deshabilitado
         )
+    elif tab == "conversion_table":
+        return (
+        {"display": "none"}, {"display": "none"}, {"display": "none"},
+        False, True, True, False, True, True, True
+        )
     elif tab == "winrate":
         return (
             {"display": "none"}, {"display": "none"}, {"display": "none"},
@@ -302,6 +313,11 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
 
         return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
     
+    elif tab == "conversion_table":
+        fecha_corte = eventos[evento]
+        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        return update_conversion_table(df_filtrado, color_opcion) # color_opcion trae "Top1" o "Top3"
+
     elif tab == "evolution":
         fecha_corte = eventos[evento]
         df_filtrado = meta[meta['Fecha'] >= fecha_corte]
@@ -459,6 +475,81 @@ def update_top_distribution(df, top_type):
     )
     
     return dcc.Graph(figure=fig)
+
+def update_conversion_table(df, top_type):
+    if df.empty:
+        return html.Div("No hay datos disponibles")
+
+    # 1. Etiquetas dinámicas según el selector
+    label_exito = "Torneos ganados" if top_type == "Top1" else "Podios"
+
+    # 2. Agrupar y calcular métricas
+    stats = df.groupby('Arquetipo').agg({
+        'Standing': 'count', 
+        top_type: 'sum'
+    }).reset_index()
+    
+    stats.columns = ['Arquetipo', 'Jugadores', 'Tops']
+    
+    total_j = stats['Jugadores'].sum()
+    total_t = stats['Tops'].sum()
+    
+    stats['Meta %'] = (stats['Jugadores'] / total_j * 100).round(2)
+    stats['Top %'] = (stats['Tops'] / total_t * 100).round(2)
+    
+    # NUEVO: Factor ahora se calcula como porcentaje
+    stats['Factor %'] = (stats['Tops'] / stats['Jugadores'] * 100).round(2)
+    
+    # 3. Rendimiento Neto (% Top - % Meta)
+    stats['Neto'] = (stats['Top %'] - stats['Meta %']).round(2)
+    
+    # 4. Filtrar: Presencia >= 1% y al menos 1 éxito
+    stats = stats[(stats['Meta %'] >= 1.0) & (stats['Tops'] > 0)]
+
+    # 5. Ordenar por el nuevo Factor %
+    stats = stats.sort_values('Factor %', ascending=False)
+    
+    # 6. Construir la Tabla
+    table_header = [
+        html.Thead(html.Tr([
+            html.Th("Arquetipo"),
+            html.Th(f"Tasa de Conversión {label_exito}"),
+            html.Th("Rendimiento Neto (%)"),
+            html.Th(f"% presencia en el Meta | % de {label_exito}")
+        ]))
+    ]
+    
+    rows = []
+    for _, row in stats.iterrows():
+        # Lógica de color para Rendimiento Neto
+        if row['Neto'] > 0:
+            color_neto = "text-success"
+            prefijo = "+"
+        elif row['Neto'] < 0:
+            color_neto = "text-danger"
+            prefijo = ""
+        else:
+            color_neto = "text-dark"
+            prefijo = ""
+
+        rows.append(html.Tr([
+            html.Td(row['Arquetipo'], style={'font-weight': 'bold'}),
+            
+            # Factor de conversión ahora como % (ej: 15.50%)
+            html.Td(f"{row['Factor %']:.2f}%"),
+            
+            html.Td(f"{prefijo}{row['Neto']}%", className=f"fw-bold {color_neto}"),
+            
+            html.Td(
+                html.Small(
+                    f"Meta: {row['Meta %']}% | {label_exito}: {row['Top %']}% ({int(row['Tops'])})", 
+                    className="text-muted",
+                    style={'font-size': '0.9rem'}
+                )
+            )
+        ]))
+    
+    return dbc.Table(table_header + [html.Tbody(rows)], bordered=True, hover=True, striped=True, responsive=True)
 
 def update_evolution(df, n_top=5):
     # Procesamiento de datos
