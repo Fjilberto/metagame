@@ -504,7 +504,10 @@ def update_conversion_table(df, top_type):
     stats['Neto'] = (stats['Top %'] - stats['Meta %']).round(2)
     
     # 4. Filtrar: Presencia >= 1% y al menos 1 éxito
-    stats = stats[(stats['Meta %'] >= 1.0) & (stats['Tops'] > 0)]
+    #stats = stats[(stats['Meta %'] >= 1.0) & (stats['Tops'] > 0)]
+
+    # 4. Filtrar: Presencia >= 1% y al menos 1 éxito
+    stats = stats[stats['Tops'] >= 1]
 
     # 5. Ordenar por el nuevo Factor %
     stats = stats.sort_values('Factor %', ascending=False)
@@ -542,7 +545,7 @@ def update_conversion_table(df, top_type):
             
             html.Td(
                 html.Small(
-                    f"Meta: {row['Meta %']}% | {label_exito}: {row['Top %']}% ({int(row['Tops'])})", 
+                    f"Meta: {row['Meta %']}% ({int(row['Jugadores'])}) | {label_exito}: {row['Top %']}% ({int(row['Tops'])})", 
                     className="text-muted",
                     style={'font-size': '0.9rem'}
                 )
