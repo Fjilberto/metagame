@@ -36,7 +36,7 @@ eventos = {
 
 # ========== UI ==========
 app.layout = dbc.Container([
-    html.H1("Metagame torneos Pauper", className="mt-3 mb-4"),
+    html.H1("Metagame Santiago Pauper MTG", className="mt-3 mb-4"),
     
     dbc.Row([
         dbc.Col([
