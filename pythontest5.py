@@ -374,20 +374,62 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
 
     # 2. Crear gráfico según tipo de filtro
     if filtro == "fecha_puntual":
-        fecha_formateada = pd.to_datetime(fecha_unica).strftime("%Y-%m-%d")
-        fig = go.Figure(go.Pie(
-            labels=conteo['Arquetipo'],
-            values=conteo['Freq'],
-            textinfo='label+value',
-            marker=dict(colors=px.colors.qualitative.Set2),
-            hole=0.3
-        ))
-        fig.update_layout(
-            title=f"Mazos jugados el {fecha_formateada}",
-            plot_bgcolor='white',
-            paper_bgcolor='white',
-            showlegend=True
-        )
+        #fecha_formateada = pd.to_datetime(fecha_unica).strftime("%Y-%m-%d")
+        #fig = go.Figure(go.Pie(
+        #    labels=conteo['Arquetipo'],
+        #    values=conteo['Freq'],
+        #    textinfo='label+value',
+        #    marker=dict(colors=px.colors.qualitative.Set2),
+        #    hole=0.3
+        #))
+        #fig.update_layout(
+        #    title=f"Mazos jugados el {fecha_formateada}",
+        #    plot_bgcolor='white',
+        #    paper_bgcolor='white',
+        #    showlegend=True
+        #)
+        # Aseguramos que los puntos se calculen correctamente
+        df = df.copy()
+        df['Puntos'] = (df['Wins'] * 3) + df['Draws']
+        
+        # Ordenamos por posición (Standing)
+        df_tabla = df.sort_values('Standing', ascending=True)
+        
+        # Formatear la fecha para el título
+        fecha_formateada = pd.to_datetime(fecha_unica).strftime("%d-%m-%Y")
+
+        # Construir cabecera de la tabla
+        table_header = [
+            html.Thead(html.Tr([
+                html.Th("Pos.", style={'width': '80px'}),
+                html.Th("Arquetipo"),
+                html.Th("W", className="text-center"),
+                html.Th("L", className="text-center"),
+                html.Th("D", className="text-center"),
+                html.Th("Puntos", className="text-center", style={'font-weight': 'bold'})
+            ]))
+        ]
+
+        # Construir filas
+        rows = []
+        for _, row in df_tabla.iterrows():
+            # Estilo especial para el Top 1 o podio si lo deseas
+            clase_fila = "table-primary" if row['Standing'] == 1 else ""
+            
+            rows.append(html.Tr([
+                html.Td(f"#{int(row['Standing'])}", className="fw-bold"),
+                html.Td(row['Arquetipo']),
+                html.Td(int(row['Wins']), className="text-center"),
+                html.Td(int(row['Loses']), className="text-center"),
+                html.Td(int(row['Draws']), className="text-center"),
+                html.Td(int(row['Puntos']), className="text-center fw-bold")
+            ], className=clase_fila))
+
+        return html.Div([
+            html.H5(f"Resultados del Torneo: {fecha_formateada}", className="text-center mb-3"),
+            dbc.Table(table_header + [html.Tbody(rows)], 
+                      bordered=True, hover=True, striped=True, responsive=True, size="sm")
+        ])
     else:
         # Gráfico de barras horizontales
         fig = go.Figure(go.Bar(
