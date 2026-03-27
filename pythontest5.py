@@ -453,8 +453,17 @@ def update_liga(df, mes_seleccionado):
 
     rows = []
     for _, row in resumen.iterrows():
-        # Destacar al ganador o podio
-        clase_fila = "table-primary fw-bold" if row['Posición'] == 1 else ("table-secondary" if row['Posición'] <= 3 else "")
+        # Asignar color según la posición exacta
+        pos = row['Posición']
+        
+        if pos == 1:
+            clase_fila = "table-warning fw-bold"    # Amarillo (Estilo Oro)
+        elif pos == 2:
+            clase_fila = "table-secondary fw-bold"  # Gris (Estilo Plata)
+        elif pos == 3:
+            clase_fila = "table-danger fw-bold"     # Rojo/Salmón (Estilo Bronce)
+        else:
+            clase_fila = ""
         
         celdas = []
         for col in orden_final:
@@ -621,16 +630,16 @@ def update_conversion_table(df, top_type):
     
     stats['Meta %'] = (stats['Jugadores'] / total_j * 100).round(2)
     stats['Top %'] = (stats['Tops'] / total_t * 100).round(2)
-    stats['Factor %'] = (stats['Tops'] / stats['Jugadores'] * 100).round(2)
     stats['Neto'] = (stats['Top %'] - stats['Meta %']).round(2)
+    stats['Factor %'] = (stats['Tops'] / stats['Jugadores'] * 100).round(2)
     stats = stats[stats['Tops'] >= 1]
-    stats = stats.sort_values('Factor %', ascending=False)
+    stats = stats.sort_values('Neto', ascending=False)
     
     table_header = [
         html.Thead(html.Tr([
             html.Th("Arquetipo"),
-            html.Th(f"Tasa de Conversión {label_exito}"),
             html.Th("Rendimiento Neto (%)"),
+            html.Th(f"Tasa de Conversión {label_exito}"),
             html.Th(f"% presencia en el Meta | % de {label_exito}")
         ]))
     ]
@@ -649,8 +658,8 @@ def update_conversion_table(df, top_type):
 
         rows.append(html.Tr([
             html.Td(row['Arquetipo'], style={'font-weight': 'bold'}),
-            html.Td(f"{row['Factor %']:.2f}%"),
             html.Td(f"{prefijo}{row['Neto']}%", className=f"fw-bold {color_neto}"),
+            html.Td(f"{row['Factor %']:.2f}%"),
             html.Td(
                 html.Small(
                     f"Meta: {row['Meta %']}% ({int(row['Jugadores'])}) | {label_exito}: {row['Top %']}% ({int(row['Tops'])})", 
