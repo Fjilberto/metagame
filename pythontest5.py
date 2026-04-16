@@ -161,13 +161,13 @@ app.layout = dbc.Container([
                         )
                     ], style={'display': 'none'}),
                     
-                    # NUEVO FILTRO LIGA
+                    # NUEVO FILTRO LIGA (MODIFICADO AQUÍ PARA TABLA ACUMULADA)
                     html.Div(id="filtro-liga", children=[
                         html.Label("Selecciona el mes de Liga:", className="fw-bold"),
                         dcc.Dropdown(
                             id='selector-mes-liga',
-                            options=[{'label': str(m), 'value': m} for m in meses_disponibles],
-                            value=meses_disponibles[0] if meses_disponibles else None,
+                            options=[{'label': str(m), 'value': m} for m in meses_disponibles] + [{'label': 'Tabla Acumulada', 'value': 'Acumulada'}],
+                            value=meses_disponibles[0] if meses_disponibles else 'Acumulada',
                             placeholder="Mes...",
                             className="mb-3"
                         )
@@ -313,7 +313,7 @@ def update_filtros_visibilidad(tab):
     elif tab == "liga":
         return (
             {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
-            True, True, True, True, True, True, True # Se desactivan los demás componentes
+            True, True, True, True, True, True, True 
         )
 
 @app.callback(
@@ -389,99 +389,124 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
 
 def update_liga(df, mes_seleccionado):
     if not mes_seleccionado:
-        return html.Div("Por favor, selecciona un mes para visualizar los resultados de la liga.", className="text-center p-4 mt-5")
+        return html.Div("Por favor, selecciona una opción.", className="text-center p-4 mt-5")
 
-    # Validar que las columnas requeridas existen
-    columnas_requeridas = ['Mes', 'Liga', 'Jugador', 'Fecha', 'Wins', 'Draws', 'Arquetipo']
-    faltantes = [c for c in columnas_requeridas if c not in df.columns]
-    if faltantes:
-        return html.Div(f"Faltan columnas en metaR.xlsx: {', '.join(faltantes)}. Asegúrate de haberlas agregado.", className="text-danger p-4")
+    # ==========================================
+    # LÓGICA 1: TABLA ACUMULADA (DESGLOSE POR MESES)
+    # ==========================================
+    if mes_seleccionado == 'Acumulada':
+        df_liga = df[df['Liga'].astype(str).str.lower().str.strip() == 'si'].copy()
+        if df_liga.empty:
+            return html.Div("No hay datos de liga disponibles.", className="text-center p-4 mt-5")
+        
+        # 1. Obtener lista de meses cronológica para las columnas
+        meses_cols = df_liga.groupby('Mes')['Fecha'].max().sort_values().index.tolist()
+        
+        resultados_por_jugador = []
+        ganadores_historicos = set()
+        
+        # 2. Calcular puntos por mes para cada jugador
+        for m in meses_cols:
+            df_m = df_liga[df_liga['Mes'] == m].copy()
+            df_m['Puntos_F'] = (df_m['Wins'] * 3) + df_m['Draws']
+            
+            fechas_m = sorted(df_m['Fecha'].unique())
+            asistencia_m = df_m.groupby('Jugador')['Fecha'].nunique()
+            
+            # Pivot para calcular el Top 4 del mes
+            pivot_m = df_m.pivot(index='Jugador', columns='Fecha', values='Puntos_F').fillna(0)
+            
+            puntos_mes_dict = {}
+            for jugador, row in pivot_m.iterrows():
+                total_m = sum(sorted(row.values, reverse=True)[:4]) + asistencia_m.get(jugador, 0)
+                puntos_mes_dict[jugador] = total_m
+            
+            # Identificar ganador del mes (si hubo 4+ fechas) para el estilo azul
+            if len(fechas_m) >= 4 and puntos_mes_dict:
+                max_p = max(puntos_mes_dict.values())
+                ganadores_m = [j for j, p in puntos_mes_dict.items() if p == max_p]
+                ganadores_historicos.update(ganadores_m)
+            
+            resultados_por_jugador.append(pd.Series(puntos_mes_dict, name=m))
 
-    # Filtrar mes y validación de Liga == 'si'
+        # 3. Unir todos los meses en un DataFrame
+        df_acumulado = pd.concat(resultados_por_jugador, axis=1).fillna(0)
+        df_acumulado['Puntaje Total'] = df_acumulado.sum(axis=1)
+        df_acumulado = df_acumulado.sort_values('Puntaje Total', ascending=False).reset_index()
+        df_acumulado.rename(columns={'index': 'Jugador'}, inplace=True)
+        df_acumulado.insert(0, 'Posición', range(1, len(df_acumulado) + 1))
+
+        # 4. Construcción de la tabla
+        columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Puntaje Total']
+        header = [html.Th(c, className="text-center align-middle") for c in columnas_finales]
+        
+        rows = []
+        for _, row in df_acumulado.iterrows():
+            jugador = row['Jugador']
+            clase_fila = "table-primary" if jugador in ganadores_historicos else ""
+            
+            celdas = []
+            for col in columnas_finales:
+                val = row[col]
+                if isinstance(val, (int, float)) and col != 'Jugador':
+                    val = int(val)
+                
+                estilo = "text-center align-middle"
+                if col == 'Puntaje Total': estilo += " fw-bold text-primary"
+                if col == 'Jugador' and jugador in ganadores_historicos: estilo += " fw-bold"
+                
+                celdas.append(html.Td(val, className=estilo))
+            rows.append(html.Tr(celdas, className=clase_fila))
+
+        return html.Div([
+            html.H4("Clasificación Acumulada de la Liga", className="text-center mb-4"),
+            dbc.Table([html.Thead(html.Tr(header)), html.Tbody(rows)], 
+                      bordered=True, hover=True, striped=True, responsive=True, size="sm", style={'font-size': '12px'})
+        ])
+
+    # ==========================================
+    # LÓGICA 2: TABLAS MENSUALES (MANTIENE EL ORDEN ANTERIOR)
+    # ==========================================
     df_mes = df[(df['Mes'] == mes_seleccionado) & (df['Liga'].astype(str).str.lower().str.strip() == 'si')].copy()
-
     if df_mes.empty:
-        return html.Div(f"No se encontraron torneos marcados como 'Liga' para el mes: {mes_seleccionado}.", className="text-center p-4 mt-5")
+        return html.Div(f"Sin datos para {mes_seleccionado}", className="text-center p-4 mt-5")
 
-    # 1. Puntos
     df_mes['Puntos_Fecha'] = (df_mes['Wins'] * 3) + df_mes['Draws']
-
-    # 2. Identificar y mapear las fechas cronológicamente
     fechas_ordenadas = sorted(df_mes['Fecha'].unique())
     mapeo_fechas = {fecha: f"Fecha {i+1}" for i, fecha in enumerate(fechas_ordenadas)}
     df_mes['N_Fecha'] = df_mes['Fecha'].map(mapeo_fechas)
 
-    # 3. Tablas pivot
     tabla_puntos_raw = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Puntos_Fecha')
     tabla_puntos = tabla_puntos_raw.fillna(0)
-    
     tabla_mazos = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Arquetipo').fillna("-")
     tabla_mazos.columns = [f"Mazo {col}" for col in tabla_mazos.columns]
 
     resumen = pd.concat([tabla_puntos, tabla_mazos], axis=1)
-    
-    # 4. Asistencia
     resumen['Asistencia'] = tabla_puntos_raw.notna().sum(axis=1)
 
-    # 5. Puntos totales (Asistencia + 4 mejores)
     cols_fechas = [f"Fecha {i+1}" for i in range(len(fechas_ordenadas))]
-    
-    def calcular_total(row):
-        puntos_fechas = [row[c] for c in cols_fechas]
-        puntos_fechas.sort(reverse=True)
-        mejores_4 = sum(puntos_fechas[:4])
-        return mejores_4 + row['Asistencia']
+    resumen['Puntos Totales'] = resumen.apply(lambda r: sum(sorted([r[c] for c in cols_fechas], reverse=True)[:4]) + r['Asistencia'], axis=1)
 
-    resumen['Puntos Totales'] = resumen.apply(calcular_total, axis=1)
-
-    # 6. Ordenar, reiniciar índice y asignar Posición
     resumen = resumen.sort_values(by='Puntos Totales', ascending=False).reset_index()
     resumen.insert(0, 'Posición', range(1, len(resumen) + 1))
 
-    # 7. Organizar columnas en el orden solicitado
     cols_mazos = [f"Mazo {c}" for c in cols_fechas]
     orden_final = ['Posición', 'Jugador'] + cols_fechas + ['Asistencia', 'Puntos Totales'] + cols_mazos
-    resumen = resumen[orden_final]
-
-    # 8. Construcción visual (Cabecera y Filas)
-    table_header = [
-        html.Thead(html.Tr([
-            html.Th(col, className="text-center align-middle" if "Fecha" in col or col in ["Posición", "Asistencia", "Puntos Totales"] else "align-middle") 
-            for col in orden_final
-        ]))
-    ]
-
+    
+    header = [html.Th(col, className="text-center align-middle") for col in orden_final]
     rows = []
     for _, row in resumen.iterrows():
-        # Asignar color según la posición exacta
         pos = row['Posición']
-        
-        if pos == 1:
-            clase_fila = "table-warning fw-bold"    # Amarillo (Estilo Oro)
-        elif pos == 2:
-            clase_fila = "table-secondary fw-bold"  # Gris (Estilo Plata)
-        elif pos == 3:
-            clase_fila = "table-danger fw-bold"     # Rojo/Salmón (Estilo Bronce)
-        else:
-            clase_fila = ""
-        
-        celdas = []
-        for col in orden_final:
-            valor = row[col]
-            if isinstance(valor, float):
-                valor = int(valor) # Formato limpio
-                
-            estilo = "text-center align-middle" if "Fecha" in col or col in ["Posición", "Asistencia", "Puntos Totales"] else "align-middle"
-            if col == "Puntos Totales":
-                estilo += " fw-bold text-primary"
-                
-            celdas.append(html.Td(valor, className=estilo))
-            
+        clase_fila = "table-warning fw-bold" if (pos == 1 and len(fechas_ordenadas) >= 4) else ""
+        celdas = [html.Td(int(row[c]) if isinstance(row[c], (int, float)) and c != 'Jugador' else row[c], 
+                  className="text-center align-middle" + (" fw-bold text-primary" if c == "Puntos Totales" else "")) 
+                  for c in orden_final]
         rows.append(html.Tr(celdas, className=clase_fila))
 
     return html.Div([
-        html.H4(f"Clasificación Liga Mensual: {mes_seleccionado}", className="text-center mb-4"),
-        dbc.Table(table_header + [html.Tbody(rows)], bordered=True, hover=True, striped=True, responsive=True, size="sm", style={'font-size': '13px'})
+        html.H4(f"Detalle Liga: {mes_seleccionado}", className="text-center mb-4"),
+        dbc.Table([html.Thead(html.Tr(header)), html.Tbody(rows)], 
+                  bordered=True, hover=True, striped=True, responsive=True, size="sm", style={'font-size': '12px'})
     ])
 
 def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top=20):
@@ -522,15 +547,25 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
 
         rows = []
         for _, row in df_tabla.iterrows():
-            clase_fila = "table-primary" if row['Standing'] == 1 else ""
-            rows.append(html.Tr([
-                html.Td(f"#{int(row['Standing'])}", className="fw-bold"),
-                html.Td(row['Arquetipo']),
-                html.Td(int(row['Wins']), className="text-center"),
-                html.Td(int(row['Loses']), className="text-center"),
-                html.Td(int(row['Draws']), className="text-center"),
-                html.Td(int(row['Puntos']), className="text-center fw-bold")
-            ], className=clase_fila))
+            pos = row['Posición']
+            if pos == 1:
+                clase_fila = "table-warning fw-bold"    # Estilo destacado
+            else:
+                clase_fila = "" # El resto de las filas se mantienen estándar
+        celdas = []
+        for col in orden_final:
+            valor = row[col]
+            if isinstance(valor, float):
+                valor = int(valor) # Mantenemos el formato limpio de números
+                
+            # Mantenemos el estilo de las columnas (centrado para puntos, negrita para el total)
+            estilo = "text-center align-middle" if "Fecha" in col or col in ["Posición", "Asistencia", "Puntos Totales"] else "align-middle"
+            if col == "Puntos Totales":
+                estilo += " fw-bold text-primary"
+                
+            celdas.append(html.Td(valor, className=estilo))
+            
+        rows.append(html.Tr(celdas, className=clase_fila))
 
         return html.Div([
             html.H5(f"Resultados del Torneo: {fecha_formateada}", className="text-center mb-3"),
