@@ -530,42 +530,40 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
 
     if filtro == "fecha_puntual":
         df = df.copy()
+        # Calculamos puntos para esta vista
         df['Puntos'] = (df['Wins'] * 3) + df['Draws']
+        # Ordenamos por Standing (columna del Excel)
         df_tabla = df.sort_values('Standing', ascending=True)
         fecha_formateada = pd.to_datetime(fecha_unica).strftime("%d-%m-%Y")
 
         table_header = [
             html.Thead(html.Tr([
-                html.Th("Pos.", style={'width': '80px'}),
+                html.Th("Pos.", className="text-center"),
+                html.Th("Jugador"),
                 html.Th("Arquetipo"),
                 html.Th("W", className="text-center"),
                 html.Th("L", className="text-center"),
                 html.Th("D", className="text-center"),
-                html.Th("Puntos", className="text-center", style={'font-weight': 'bold'})
+                html.Th("Puntos", className="text-center")
             ]))
         ]
 
         rows = []
         for _, row in df_tabla.iterrows():
-            pos = row['Posición']
-            if pos == 1:
-                clase_fila = "table-warning fw-bold"    # Estilo destacado
-            else:
-                clase_fila = "" # El resto de las filas se mantienen estándar
-        celdas = []
-        for col in orden_final:
-            valor = row[col]
-            if isinstance(valor, float):
-                valor = int(valor) # Mantenemos el formato limpio de números
-                
-            # Mantenemos el estilo de las columnas (centrado para puntos, negrita para el total)
-            estilo = "text-center align-middle" if "Fecha" in col or col in ["Posición", "Asistencia", "Puntos Totales"] else "align-middle"
-            if col == "Puntos Totales":
-                estilo += " fw-bold text-primary"
-                
-            celdas.append(html.Td(valor, className=estilo))
+            # Usamos 'Standing' para el estilo y la posición
+            pos = row['Standing']
+            clase_fila = "table-warning fw-bold" if pos == 1 else ""
             
-        rows.append(html.Tr(celdas, className=clase_fila))
+            # Construimos las celdas manualmente para evitar el error de orden_final
+            rows.append(html.Tr([
+                html.Td(int(pos), className="text-center"),
+                html.Td(row['Jugador'] if 'Jugador' in row else "-"),
+                html.Td(row['Arquetipo']),
+                html.Td(int(row['Wins']), className="text-center"),
+                html.Td(int(row['Loses']), className="text-center"),
+                html.Td(int(row['Draws']), className="text-center"),
+                html.Td(int(row['Puntos']), className="text-center fw-bold text-primary")
+            ], className=clase_fila))
 
         return html.Div([
             html.H5(f"Resultados del Torneo: {fecha_formateada}", className="text-center mb-3"),
@@ -573,34 +571,25 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
                       bordered=True, hover=True, striped=True, responsive=True, size="sm")
         ])
     else:
+        # Gráfico de barras (se mantiene igual)
         fig = go.Figure(go.Bar(
             x=conteo['Freq'],
             y=conteo['Arquetipo'],
             orientation='h',
-            marker_color='dodgerblue',
-            hoverinfo='text',
-            hovertext=[f"{row['Arquetipo']}: {row['Freq']} apariciones" for _, row in conteo.iterrows()]
+            marker_color='dodgerblue'
         ))
         
-        title = (evento if filtro == "evento" 
-                else f"Mazos desde {start_date} a {end_date}")
+        title = (evento if filtro == "evento" else f"Mazos desde {start_date} a {end_date}")
         
         fig.update_layout(
-            title=f"{title} (Top {n_top} + Otros)" if len(conteo) > n_top else title,
+            title=title,
             xaxis_title="Apariciones",
             yaxis_title="Mazos",
             plot_bgcolor='white',
             paper_bgcolor='white',
-            yaxis=dict(
-                tickfont=dict(size=9),
-                automargin=True,
-                tickangle=-15
-            ),
-            height=700,
-            margin=dict(l=100)
+            height=700
         )
-    
-    return dcc.Graph(figure=fig)
+        return dcc.Graph(figure=fig)
 
 def update_top_distribution(df, top_type):
     stats = df.groupby('Arquetipo')[top_type].sum().reset_index()
