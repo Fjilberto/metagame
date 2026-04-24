@@ -392,28 +392,28 @@ def update_liga(df, mes_seleccionado):
         return html.Div("Por favor, selecciona una opción.", className="text-center p-4 mt-5")
 
     # ==========================================
-    # LÓGICA 1: TABLA ACUMULADA (DESGLOSE POR MESES)
+    # LÓGICA 1: TABLA ACUMULADA
     # ==========================================
     if mes_seleccionado == 'Acumulada':
         df_liga = df[df['Liga'].astype(str).str.lower().str.strip() == 'si'].copy()
         if df_liga.empty:
             return html.Div("No hay datos de liga disponibles.", className="text-center p-4 mt-5")
         
-        # 1. Obtener lista de meses cronológica para las columnas
-        meses_cols = df_liga.groupby('Mes')['Fecha'].max().sort_values().index.tolist()
+        stats_global = df_liga.groupby('Jugador').agg(
+            Asistencia_Total=('Fecha', 'nunique'),
+            Torneos_Ganados=('Standing', lambda x: (x == 1).sum()),
+            Posicion_Promedio=('Standing', 'mean')
+        )
         
+        meses_cols = df_liga.groupby('Mes')['Fecha'].max().sort_values().index.tolist()
         resultados_por_jugador = []
         ganadores_historicos = set()
         
-        # 2. Calcular puntos por mes para cada jugador
         for m in meses_cols:
             df_m = df_liga[df_liga['Mes'] == m].copy()
             df_m['Puntos_F'] = (df_m['Wins'] * 3) + df_m['Draws']
-            
             fechas_m = sorted(df_m['Fecha'].unique())
             asistencia_m = df_m.groupby('Jugador')['Fecha'].nunique()
-            
-            # Pivot para calcular el Top 4 del mes
             pivot_m = df_m.pivot(index='Jugador', columns='Fecha', values='Puntos_F').fillna(0)
             
             puntos_mes_dict = {}
@@ -421,7 +421,6 @@ def update_liga(df, mes_seleccionado):
                 total_m = sum(sorted(row.values, reverse=True)[:4]) + asistencia_m.get(jugador, 0)
                 puntos_mes_dict[jugador] = total_m
             
-            # Identificar ganador del mes (si hubo 4+ fechas) para el estilo azul
             if len(fechas_m) >= 4 and puntos_mes_dict:
                 max_p = max(puntos_mes_dict.values())
                 ganadores_m = [j for j, p in puntos_mes_dict.items() if p == max_p]
@@ -429,32 +428,53 @@ def update_liga(df, mes_seleccionado):
             
             resultados_por_jugador.append(pd.Series(puntos_mes_dict, name=m))
 
-        # 3. Unir todos los meses en un DataFrame
         df_acumulado = pd.concat(resultados_por_jugador, axis=1).fillna(0)
         df_acumulado['Puntaje Total'] = df_acumulado.sum(axis=1)
-        df_acumulado = df_acumulado.sort_values('Puntaje Total', ascending=False).reset_index()
-        df_acumulado.rename(columns={'index': 'Jugador'}, inplace=True)
+        
+        # Unir y Ordenar
+        df_acumulado = df_acumulado.join(stats_global)
+        df_acumulado = df_acumulado.sort_values(
+            by=['Puntaje Total', 'Asistencia_Total', 'Torneos_Ganados', 'Posicion_Promedio'], 
+            ascending=[False, False, False, True]
+        ).reset_index()
+        
+        df_acumulado.rename(columns={'index': 'Jugador', 'Asistencia_Total': 'Asistencia Total', 
+                                     'Torneos_Ganados': 'Torneos Ganados', 'Posicion_Promedio': 'Pos. Promedio'}, inplace=True)
         df_acumulado.insert(0, 'Posición', range(1, len(df_acumulado) + 1))
 
-        # 4. Construcción de la tabla
-        columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Puntaje Total']
+        columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Puntaje Total', 'Asistencia Total', 'Torneos Ganados', 'Pos. Promedio']
         header = [html.Th(c, className="text-center align-middle") for c in columnas_finales]
         
         rows = []
-        for _, row in df_acumulado.iterrows():
+        for i, row in df_acumulado.iterrows():
+            # Lógica de visibilidad del promedio: solo si hay empate en los 3 criterios anteriores
+            # Comparamos con la fila anterior y la siguiente
+            es_empate = False
+            if i > 0: # Comparar con arriba
+                prev = df_acumulado.iloc[i-1]
+                if (row['Puntaje Total'] == prev['Puntaje Total'] and 
+                    row['Asistencia Total'] == prev['Asistencia Total'] and 
+                    row['Torneos Ganados'] == prev['Torneos Ganados']):
+                    es_empate = True
+            if i < len(df_acumulado) - 1: # Comparar con abajo
+                nxt = df_acumulado.iloc[i+1]
+                if (row['Puntaje Total'] == nxt['Puntaje Total'] and 
+                    row['Asistencia Total'] == nxt['Asistencia Total'] and 
+                    row['Torneos Ganados'] == nxt['Torneos Ganados']):
+                    es_empate = True
+
             jugador = row['Jugador']
             clase_fila = "table-primary" if jugador in ganadores_historicos else ""
-            
             celdas = []
             for col in columnas_finales:
                 val = row[col]
-                if isinstance(val, (int, float)) and col != 'Jugador':
+                if col == 'Pos. Promedio':
+                    val = round(val, 2) if es_empate else "-"
+                elif isinstance(val, (int, float)) and col != 'Jugador':
                     val = int(val)
                 
                 estilo = "text-center align-middle"
                 if col == 'Puntaje Total': estilo += " fw-bold text-primary"
-                if col == 'Jugador' and jugador in ganadores_historicos: estilo += " fw-bold"
-                
                 celdas.append(html.Td(val, className=estilo))
             rows.append(html.Tr(celdas, className=clase_fila))
 
@@ -465,18 +485,22 @@ def update_liga(df, mes_seleccionado):
         ])
 
     # ==========================================
-    # LÓGICA 2: TABLAS MENSUALES (MANTIENE EL ORDEN ANTERIOR)
+    # LÓGICA 2: TABLAS MENSUALES
     # ==========================================
     df_mes = df[(df['Mes'] == mes_seleccionado) & (df['Liga'].astype(str).str.lower().str.strip() == 'si')].copy()
-    if df_mes.empty:
-        return html.Div(f"Sin datos para {mes_seleccionado}", className="text-center p-4 mt-5")
+    if df_mes.empty: return html.Div(f"Sin datos para {mes_seleccionado}", className="text-center p-4 mt-5")
 
-    df_mes['Puntos_Fecha'] = (df_mes['Wins'] * 3) + df_mes['Draws']
+    stats_mes = df_mes.groupby('Jugador').agg(
+        Torneos_Ganados=('Standing', lambda x: (x == 1).sum()),
+        Posicion_Promedio=('Standing', 'mean')
+    )
+
+    df_mes['Puntos_F'] = (df_mes['Wins'] * 3) + df_mes['Draws']
     fechas_ordenadas = sorted(df_mes['Fecha'].unique())
     mapeo_fechas = {fecha: f"Fecha {i+1}" for i, fecha in enumerate(fechas_ordenadas)}
     df_mes['N_Fecha'] = df_mes['Fecha'].map(mapeo_fechas)
 
-    tabla_puntos_raw = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Puntos_Fecha')
+    tabla_puntos_raw = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Puntos_F')
     tabla_puntos = tabla_puntos_raw.fillna(0)
     tabla_mazos = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Arquetipo').fillna("-")
     tabla_mazos.columns = [f"Mazo {col}" for col in tabla_mazos.columns]
@@ -487,20 +511,44 @@ def update_liga(df, mes_seleccionado):
     cols_fechas = [f"Fecha {i+1}" for i in range(len(fechas_ordenadas))]
     resumen['Puntos Totales'] = resumen.apply(lambda r: sum(sorted([r[c] for c in cols_fechas], reverse=True)[:4]) + r['Asistencia'], axis=1)
 
-    resumen = resumen.sort_values(by='Puntos Totales', ascending=False).reset_index()
+    resumen = resumen.join(stats_mes)
+    resumen = resumen.sort_values(
+        by=['Puntos Totales', 'Asistencia', 'Torneos_Ganados', 'Posicion_Promedio'], 
+        ascending=[False, False, False, True]
+    ).reset_index()
+    
+    resumen.rename(columns={'Torneos_Ganados': 'Torneos Ganados', 'Posicion_Promedio': 'Pos. Promedio'}, inplace=True)
     resumen.insert(0, 'Posición', range(1, len(resumen) + 1))
 
     cols_mazos = [f"Mazo {c}" for c in cols_fechas]
-    orden_final = ['Posición', 'Jugador'] + cols_fechas + ['Asistencia', 'Puntos Totales'] + cols_mazos
+    orden_final = ['Posición', 'Jugador'] + cols_fechas + ['Asistencia', 'Puntos Totales', 'Torneos Ganados', 'Pos. Promedio'] + cols_mazos
     
     header = [html.Th(col, className="text-center align-middle") for col in orden_final]
     rows = []
-    for _, row in resumen.iterrows():
+    for i, row in resumen.iterrows():
+        # Lógica de visibilidad del promedio (mensual)
+        es_empate = False
+        if i > 0:
+            prev = resumen.iloc[i-1]
+            if (row['Puntos Totales'] == prev['Puntos Totales'] and row['Asistencia'] == prev['Asistencia'] and row['Torneos Ganados'] == prev['Torneos Ganados']):
+                es_empate = True
+        if i < len(resumen) - 1:
+            nxt = resumen.iloc[i+1]
+            if (row['Puntos Totales'] == nxt['Puntos Totales'] and row['Asistencia'] == nxt['Asistencia'] and row['Torneos Ganados'] == nxt['Torneos Ganados']):
+                es_empate = True
+
         pos = row['Posición']
         clase_fila = "table-warning fw-bold" if (pos == 1 and len(fechas_ordenadas) >= 4) else ""
-        celdas = [html.Td(int(row[c]) if isinstance(row[c], (int, float)) and c != 'Jugador' else row[c], 
-                  className="text-center align-middle" + (" fw-bold text-primary" if c == "Puntos Totales" else "")) 
-                  for c in orden_final]
+        celdas = []
+        for c in orden_final:
+            val = row[c]
+            if c == 'Pos. Promedio':
+                val = round(val, 2) if es_empate else "-"
+            elif isinstance(val, (int, float)) and c != 'Jugador':
+                val = int(val)
+            
+            estilo = "text-center align-middle" + (" fw-bold text-primary" if c == "Puntos Totales" else "")
+            celdas.append(html.Td(val, className=estilo))
         rows.append(html.Tr(celdas, className=clase_fila))
 
     return html.Div([
