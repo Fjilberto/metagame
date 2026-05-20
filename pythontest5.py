@@ -482,10 +482,17 @@ def update_liga(df, mes_seleccionado):
                 celdas.append(html.Td(val, className=estilo))
             rows.append(html.Tr(celdas, className=clase_fila))
 
+        total_cupos = len(clasificados_mes + clasificados_anual + clasificados_asistencia)
         return html.Div([
             html.H4("Carrera al Invitacional (Top 16)", className="text-center mb-2"),
-            html.P(f"Cupos confirmados: {len(clasificados_mes + clasificados_anual + clasificados_asistencia)} / 16", className="text-center text-muted small"),
-            dbc.Table([html.Thead(html.Tr(header)), html.Tbody(rows)], bordered=True, hover=True, responsive=True, size="sm", style={'font-size': '12px'})
+            html.P(f"Cuposs: {total_cupos} / 16", className="text-center text-muted small"),
+            html.Div([
+                html.Span("● Ganador Mes ", className="text-success me-3 small"),
+                html.Span("● Top Anual (6) ", className="text-info me-3 small"),
+                html.Span("● Top Asistencia (2) ", className="text-warning small")
+            ], className="text-center mb-3"),
+            dbc.Table([html.Thead(html.Tr(header)), html.Tbody(rows)], 
+                      bordered=True, hover=True, responsive=True, size="sm", style={'font-size': '12px'})
         ])
 
     # ==========================================
