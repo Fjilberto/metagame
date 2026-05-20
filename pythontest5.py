@@ -40,7 +40,7 @@ else:
 
 # Definir eventos
 eventos = {
-    "Mazos jugados desde desbaneo de Bonder's Ornament": datetime(2025, 5, 19),
+    "Mazos jugados desde desbaneo de Bonder's Ornament": datetime(2026, 5, 19),
     "Mazos jugados desde baneo de High Tide": datetime(2025, 11, 10),
     "Mazos jugados desde baneo/desbaneo Deadly, Tide y otros": datetime(2025, 3, 31),
     "Mazos jugados desde baneo de All That Glitters": datetime(2024, 5, 13),
