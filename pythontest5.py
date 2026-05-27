@@ -486,9 +486,9 @@ def update_liga(df, mes_seleccionado):
         total_cupos = len(clasificados_mes + clasificados_anual + clasificados_asistencia)
         return html.Div([
             html.H4("Carrera al Invitacional (Top 16)", className="text-center mb-2"),
-            html.P(f"Cuposs: {total_cupos} / 16", className="text-center text-muted small"),
+            html.P(f"Cupos: {total_cupos} / 16", className="text-center text-muted small"),
             html.Div([
-                html.Span("● Ganador Mes ", className="text-success me-3 small"),
+                html.Span("● Ganador Mes (8)", className="text-success me-3 small"),
                 html.Span("● Top Anual (6) ", className="text-info me-3 small"),
                 html.Span("● Top Asistencia (2) ", className="text-warning small")
             ], className="text-center mb-3"),
@@ -524,15 +524,15 @@ def update_liga(df, mes_seleccionado):
     
     # ORDEN MENSUAL: Puntos Totales > Asistencia > %VPO > %JG > %JGO
     resumen = resumen.join(stats_mes).sort_values(
-        by=['Puntos Totales', 'Asistencia', 'VPO_Prom', 'JG_Prom', 'JGO_Prom'],
-        ascending=[False, False, False, False, False]
+        by=['Puntos Totales', 'Asistencia', 'Torneos_Ganados','VPO_Prom', 'JG_Prom', 'JGO_Prom'],
+        ascending=[False, False, False, False, False, False]
     ).reset_index()
     
     resumen.insert(0, 'Posición', range(1, len(resumen) + 1))
     resumen.rename(columns={'Torneos_Ganados': 'Torneos Ganados', 'VPO_Prom': '%VPO', 'JG_Prom': '%JG', 'JGO_Prom': '%JGO'}, inplace=True)
     
     cols_f = [f"Fecha {i+1}" for i in range(len(fechas))]
-    orden = ['Posición', 'Jugador'] + cols_f + ['Asistencia', 'Puntos Totales', '%VPO', '%JG', '%JGO', 'Torneos Ganados'] + [f"Mazo {c}" for c in cols_f]
+    orden = ['Posición', 'Jugador'] + cols_f + ['Asistencia', 'Puntos Totales', 'Torneos Ganados', '%VPO', '%JG', '%JGO'] + [f"Mazo {c}" for c in cols_f]
     
     rows = []
     for i, row in resumen.iterrows():
