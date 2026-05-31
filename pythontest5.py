@@ -488,9 +488,6 @@ def update_liga(df, mes_seleccionado):
             html.H4("Carrera al Invitacional (Top 16)", className="text-center mb-2"),
             html.P(f"Cupos: {total_cupos} / 16", className="text-center text-muted small"),
             html.Div([
-                html.Span(f"Cupos: {len(clasificados_mes + clasificados_anual + clasificados_asistencia)} / 16", 
-                          className="fw-bold"),
-                html.Br(),
                 html.Small("Importante! Los cupos del Top Anual y Top Asistencia solo se confirman una vez jugada la ultima fecha de la Liga", 
                            className="text-muted"),
                 html.Br(),
