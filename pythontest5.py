@@ -491,7 +491,7 @@ def update_liga(df, mes_seleccionado):
                 html.Small("Importante! Los cupos del Top Anual y Top Asistencia solo se confirman una vez jugada la ultima fecha de la Liga", 
                            className="text-muted"),
                 html.Br(),
-                html.Span("● Clasificado mensual: Ganador de liga o mejor lugar sin cupo (8)", className="text-success me-3 small"),
+                html.Span("● Clasificado mensual: Ganador del mes o mejor lugar sin cupo (8)", className="text-success me-3 small"),
                 html.Span("● Top Anual (6) ", className="text-info me-3 small"),
                 html.Span("● Top Asistencia (2) ", className="text-warning small")
             ], className="text-center mb-3"),
