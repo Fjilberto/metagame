@@ -466,7 +466,7 @@ def update_liga(df, mes_seleccionado):
         df_acumulado.insert(0, 'Posición', range(1, len(df_acumulado) + 1))
         df_acumulado.rename(columns={'Asistencia_Total': 'Asistencia', 'Torneos_Ganados': 'Torneos Ganados', 'VPO_Acum': '%VPO', 'JG_Acum': '%JG', 'JGO_Acum': '%JGO'}, inplace=True)
 
-        columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Asistencia', 'Puntaje Total', 'Ligas Ganadas', 'Torneos Ganados', '%VPO', '%JG', '%JGO']
+        columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Puntaje Total', 'Asistencia', 'Ligas Ganadas', 'Torneos Ganados', '%VPO', '%JG', '%JGO']
         header = [html.Th(c, className="text-center align-middle") for c in columnas_finales]
         
         rows = []
@@ -486,12 +486,17 @@ def update_liga(df, mes_seleccionado):
         total_cupos = len(clasificados_mes + clasificados_anual + clasificados_asistencia)
         return html.Div([
             html.H4("Carrera al Invitacional (Top 16)", className="text-center mb-2"),
-            html.P(f"Cupos: {total_cupos} / 16", className="text-center text-muted small"),
+            #html.P(f"Cupos: {total_cupos} / 16", className="text-center text-muted small"),
             html.Div([
-                html.Small("Importante! Los cupos del Top Anual y Top Asistencia solo se confirman una vez jugada la ultima fecha de la Liga", 
-                           className="text-muted"),
+                html.Small([
+                    html.B("¡Importante!"),
+                    html.Br(),
+                    "1) Solo tiene asegurado su cupo el Clasificado mensual (color verde).",
+                    html.Br(),
+                    "2) Los cupos del Top Anual y Top Asistencia no están confirmados, solo se van a estar una vez jugado el  ultimo mes de la Liga."
+                ], className="text-muted d-block text-center"),
                 html.Br(),
-                html.Span("● Clasificado mensual: Ganador del mes o mejor lugar sin cupo (8)", className="text-success me-3 small"),
+                html.Span("● Clasificado mensual: Ganador del mes o mejor lugar del mes sin cupo (8)", className="text-success me-3 small"),
                 html.Span("● Top Anual (6) ", className="text-info me-3 small"),
                 html.Span("● Top Asistencia (2) ", className="text-warning small")
             ], className="text-center mb-3"),
