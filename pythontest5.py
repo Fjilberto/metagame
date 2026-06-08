@@ -493,7 +493,7 @@ def update_liga(df, mes_seleccionado):
                     html.Br(),
                     "1) Solo tiene asegurado su cupo el Clasificado mensual (color verde).",
                     html.Br(),
-                    "2) Los cupos del Top Anual y Top Asistencia no están confirmados, solo se van a estar una vez jugado el  ultimo mes de la Liga."
+                    "2) Los cupos del Top Anual y Top Asistencia no están confirmados, solo van a confirmar una vez jugado el  ultimo mes de la Liga."
                 ], className="text-muted d-block text-center"),
                 html.Br(),
                 html.Span("● Clasificado mensual: Ganador del mes o mejor lugar del mes sin cupo (8)", className="text-success me-3 small"),
