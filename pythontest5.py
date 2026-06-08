@@ -446,8 +446,8 @@ def update_liga(df, mes_seleccionado):
         
         # ORDEN ACUMULADA: Ligas Ganadas > Puntos Totales > Asistencia > %VPO > %JG > %JGO
         df_acumulado = df_acumulado.sort_values(
-            by=['Puntaje Total', 'Ligas Ganadas', 'Asistencia_Total', 'VPO_Acum', 'JG_Acum', 'JGO_Acum'], 
-            ascending=[False, False, False, False, False, False]
+            by=['Puntaje Total', 'Ligas Ganadas', 'Asistencia_Total', 'Torneos_Ganados', 'VPO_Acum', 'JG_Acum', 'JGO_Acum'], 
+            ascending=[False, False, False, False, False, False, False]
         ).reset_index()
         df_acumulado.rename(columns={'index': 'Jugador'}, inplace=True)
 
