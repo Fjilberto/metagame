@@ -1,11 +1,10 @@
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from adjustText import adjust_text
 import dash_bootstrap_components as dbc
 from scipy.stats import norm
 
@@ -13,27 +12,19 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 
 # ========== CARGAR DATOS ==========
+# Parquet ya tiene tipos correctos (fechas, numéricos) — sin conversiones extra
+meta   = pd.read_parquet("metaR.parquet")
+cruces = pd.read_parquet("cruces.parquet")
 
-meta = pd.read_excel("metaR.xlsx")
-cruces = pd.read_excel("cruces.xlsx")
+# Pre-procesar datos una sola vez al inicio (no en cada callback)
+meta_fecha_min = meta['Fecha'].min()
+meta_fecha_max = meta['Fecha'].max()
+fechas_unicas = sorted(meta['Fecha'].unique(), reverse=True)
 
-# Convertir fechas
-meta['Fecha'] = pd.to_datetime(meta['Fecha'], format='%Y.%m.%d',errors='coerce')
-cruces['fecha'] = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d',errors='coerce')
-
-# Convertir Top1 y Top3 a numérico
-meta['Top1'] = pd.to_numeric(meta['Top1'])
-meta['Top3'] = pd.to_numeric(meta['Top3'])
-
-# Obtener meses disponibles para la Liga (solo si tienen torneos de liga y ordenados descendente)
+# Obtener meses disponibles para la Liga
 if 'Mes' in meta.columns and 'Liga' in meta.columns:
-    # 1. Filtramos solo los registros que pertenecen a la liga
     df_solo_liga = meta[meta['Liga'].astype(str).str.lower().str.strip() == 'si']
-    
-    # 2. Agrupamos por 'Mes' y usamos la fecha máxima de ese mes para ordenar cronológicamente
     meses_ordenados = df_solo_liga.groupby('Mes')['Fecha'].max().sort_values(ascending=False).index.tolist()
-    
-    # 3. Limpiamos valores nulos si los hubiera
     meses_disponibles = [m for m in meses_ordenados if pd.notna(m)]
 else:
     meses_disponibles = []
@@ -50,7 +41,7 @@ eventos = {
 # ========== UI ==========
 app.layout = dbc.Container([
     html.H1("Metagame Santiago Pauper MTG", className="mt-3 mb-4"),
-    
+
     dbc.Row([
         dbc.Col([
             dbc.Card([
@@ -129,7 +120,7 @@ app.layout = dbc.Container([
                             ),
                         ]
                     ),
-                    
+
                     # Filtros condicionales
                     html.Div(id="filtro-metagame", children=[
                         dbc.RadioItems(
@@ -142,7 +133,7 @@ app.layout = dbc.Container([
                             value="evento"
                         )
                     ], style={'display': 'none'}),
-                    
+
                     html.Div(id="filtro-winrate", children=[
                         dbc.RadioItems(
                             id="filtro-winrate-radio",
@@ -153,7 +144,7 @@ app.layout = dbc.Container([
                             value="evento"
                         )
                     ], style={'display': 'none'}),
-                    
+
                     html.Div(id="filtro-heatmap", children=[
                         dbc.RadioItems(
                             id="filtro-heatmap-radio",
@@ -161,8 +152,7 @@ app.layout = dbc.Container([
                             value="evento"
                         )
                     ], style={'display': 'none'}),
-                    
-                    # NUEVO FILTRO LIGA (MODIFICADO AQUÍ PARA TABLA ACUMULADA)
+
                     html.Div(id="filtro-liga", children=[
                         html.Label("Selecciona el mes de Liga:", className="fw-bold"),
                         dcc.Dropdown(
@@ -173,7 +163,7 @@ app.layout = dbc.Container([
                             className="mb-3"
                         )
                     ], style={'display': 'none'}),
-                    
+
                     # Selector de evento (compartido)
                     dcc.Dropdown(
                         id="evento-dropdown",
@@ -183,26 +173,26 @@ app.layout = dbc.Container([
                         disabled=False,
                         className="mb-3"
                     ),
-                    
+
                     # Selector de rango de fechas
                     dcc.DatePickerRange(
                         id="fechas-picker",
-                        start_date=meta['Fecha'].min(),
-                        end_date=meta['Fecha'].max(),
+                        start_date=meta_fecha_min,
+                        end_date=meta_fecha_max,
                         display_format='YYYY-MM-DD',
                         disabled=True,
                         className="mb-3"
                     ),
-                    
+
                     # Selector de fecha puntual
                     dcc.Dropdown(
                         id="fecha-unica-dropdown",
-                        options=[{"label": str(date.date()), "value": date} 
-                                for date in sorted(meta['Fecha'].unique(), reverse=True)],
+                        options=[{"label": str(date.date()), "value": date}
+                                for date in fechas_unicas],
                         disabled=True,
                         className="mb-3"
                     ),
-                    
+
                     # Selector de color para Winrate vs Porcentaje
                     dcc.Dropdown(
                         id="color-opcion-dropdown",
@@ -214,7 +204,7 @@ app.layout = dbc.Container([
                         disabled=True,
                         className="mb-3"
                     ),
-                    
+
                     html.Label("Top mazos más jugados:"),
                     dcc.Slider(
                         id='top-mazos-slider',
@@ -249,11 +239,16 @@ app.layout = dbc.Container([
                 ])
             ])
         ], md=3),
-        
+
         dbc.Col([
             dbc.Card([
                 dbc.CardBody([
-                    html.Div(id="tab-content")
+                    dcc.Loading(
+                        id="loading-content",
+                        type="circle",
+                        color="#007bff",
+                        children=html.Div(id="tab-content")
+                    )
                 ])
             ], style={"height": "650px", "overflow-y": "auto"})
         ], md=9)
@@ -279,7 +274,7 @@ def update_filtros_visibilidad(tab):
     if tab == "metagame":
         return (
             {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
-            False, False, False, True, True, False, True 
+            False, False, False, True, True, False, True
         )
     elif tab == "conversion_table":
         return (
@@ -314,8 +309,9 @@ def update_filtros_visibilidad(tab):
     elif tab == "liga":
         return (
             {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
-            True, True, True, True, True, True, True 
+            True, True, True, True, True, True, True
         )
+
 
 @app.callback(
     Output("tab-content", "children"),
@@ -334,28 +330,28 @@ def update_filtros_visibilidad(tab):
      Input("selector-mes-liga", "value")]
 )
 def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_heatmap=None,
-                     evento=None, start_date=None, end_date=None, fecha_unica=None,
-                     color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None, mes_liga=None):
-    
+                       evento=None, start_date=None, end_date=None, fecha_unica=None,
+                       color_opcion=None, n_top=None, n_top_evolution=None, min_juegos=None, mes_liga=None):
+
     if tab == "metagame":
         if filtro_metagame == "evento":
             fecha_corte = eventos[evento]
             df_filtrado = meta[meta['Fecha'] >= fecha_corte]
         elif filtro_metagame == "fechas":
             df_filtrado = meta[(meta['Fecha'] >= start_date) & (meta['Fecha'] <= end_date)]
-        else:  
+        else:
             df_filtrado = meta[meta['Fecha'] == fecha_unica]
         return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
-    
+
     elif tab == "conversion_table":
         fecha_corte = eventos[evento]
         df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_conversion_table(df_filtrado, color_opcion) 
+        return update_conversion_table(df_filtrado, color_opcion)
 
     elif tab == "evolution":
         fecha_corte = eventos[evento]
         df_filtrado = meta[meta['Fecha'] >= fecha_corte]
-        return update_evolution(df_filtrado, n_top_evolution) 
+        return update_evolution(df_filtrado, n_top_evolution)
 
     elif tab == "winrate":
         if filtro_winrate == "evento":
@@ -377,14 +373,15 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
         fecha_corte = eventos[evento]
         df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
         return update_heatmap(df_filtrado, min_juegos)
-    
+
     elif tab == "top_distribution":
         fecha_corte = eventos[evento]
         df_filtrado = meta[meta['Fecha'] >= fecha_corte]
         return update_top_distribution(df_filtrado, color_opcion)
-        
+
     elif tab == "liga":
         return update_liga(meta, mes_liga)
+
 
 # ========== FUNCIONES PARA ACTUALIZAR GRÁFICOS ==========
 
@@ -392,17 +389,13 @@ def update_liga(df, mes_seleccionado):
     if not mes_seleccionado:
         return html.Div("Por favor, selecciona una opción.", className="text-center p-4 mt-5")
 
-    # Limpieza preventiva de nombres de columnas
     df.columns = df.columns.str.strip()
 
-    # ==========================================
-    # LÓGICA 1: TABLA ACUMULADA
-    # ==========================================
     if mes_seleccionado == 'Acumulada':
         df_liga = df[df['Liga'].astype(str).str.lower().str.strip() == 'si'].copy()
         if df_liga.empty:
             return html.Div("No hay datos de liga disponibles.", className="text-center p-4 mt-5")
-        
+
         stats_global = df_liga.groupby('Jugador').agg(
             Asistencia_Total=('Fecha', 'nunique'),
             Torneos_Ganados=('Standing', lambda x: (x == 1).sum()),
@@ -410,7 +403,7 @@ def update_liga(df, mes_seleccionado):
             JG_Acum=('%JG', 'mean'),
             JGO_Acum=('%JGO', 'mean')
         )
-        
+
         meses_cols = df_liga.groupby('Mes')['Fecha'].max().sort_values().index.tolist()
         resultados_por_jugador = []
         ranking_mensual_dict = {}
@@ -424,29 +417,28 @@ def update_liga(df, mes_seleccionado):
             df_m['Puntos_F'] = (df_m['Wins'] * 3) + df_m['Draws']
             asistencia_m = df_m.groupby('Jugador')['Fecha'].nunique()
             pivot_m = df_m.pivot(index='Jugador', columns='Fecha', values='Puntos_F').fillna(0)
-            
+
             puntos_mes_dict = {}
             for jugador, row in pivot_m.iterrows():
                 total_m = sum(sorted(row.values, reverse=True)[:4]) + asistencia_m.get(jugador, 0)
                 puntos_mes_dict[jugador] = total_m
-            
+
             ranking_mensual_dict[m] = pd.Series(puntos_mes_dict).sort_values(ascending=False)
             resultados_por_jugador.append(pd.Series(puntos_mes_dict, name=m))
 
         df_acumulado = pd.concat(resultados_por_jugador, axis=1).fillna(0)
         df_acumulado['Puntaje Total'] = df_acumulado.sum(axis=1)
-        
+
         ligas_ganadas = {}
         for m in meses_terminados:
             ganador = ranking_mensual_dict[m].idxmax()
             ligas_ganadas[ganador] = ligas_ganadas.get(ganador, 0) + 1
-        
+
         df_acumulado['Ligas Ganadas'] = df_acumulado.index.map(ligas_ganadas).fillna(0)
         df_acumulado = df_acumulado.join(stats_global)
-        
-        # ORDEN ACUMULADA: Ligas Ganadas > Puntos Totales > Asistencia > %VPO > %JG > %JGO
+
         df_acumulado = df_acumulado.sort_values(
-            by=['Puntaje Total', 'Ligas Ganadas', 'Asistencia_Total', 'Torneos_Ganados', 'VPO_Acum', 'JG_Acum', 'JGO_Acum'], 
+            by=['Puntaje Total', 'Ligas Ganadas', 'Asistencia_Total', 'Torneos_Ganados', 'VPO_Acum', 'JG_Acum', 'JGO_Acum'],
             ascending=[False, False, False, False, False, False, False]
         ).reset_index()
         df_acumulado.rename(columns={'index': 'Jugador'}, inplace=True)
@@ -457,10 +449,10 @@ def update_liga(df, mes_seleccionado):
             for j_m in ranking.index:
                 if j_m not in clasificados_mes:
                     clasificados_mes.append(j_m)
-                    break 
+                    break
 
         clasificados_anual = [j for j in df_acumulado['Jugador'] if j not in clasificados_mes][:6]
-        clasificados_asistencia = [j for j in df_acumulado.sort_values('Asistencia_Total', ascending=False)['Jugador'] 
+        clasificados_asistencia = [j for j in df_acumulado.sort_values('Asistencia_Total', ascending=False)['Jugador']
                                    if j not in clasificados_mes and j not in clasificados_anual][:2]
 
         df_acumulado.insert(0, 'Posición', range(1, len(df_acumulado) + 1))
@@ -468,7 +460,7 @@ def update_liga(df, mes_seleccionado):
 
         columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Puntaje Total', 'Asistencia', 'Ligas Ganadas', 'Torneos Ganados', '%VPO', '%JG', '%JGO']
         header = [html.Th(c, className="text-center align-middle") for c in columnas_finales]
-        
+
         rows = []
         for i, row in df_acumulado.iterrows():
             jug = row['Jugador']
@@ -486,7 +478,6 @@ def update_liga(df, mes_seleccionado):
         total_cupos = len(clasificados_mes + clasificados_anual + clasificados_asistencia)
         return html.Div([
             html.H4("Carrera al Invitacional (Top 16)", className="text-center mb-2"),
-            #html.P(f"Cupos: {total_cupos} / 16", className="text-center text-muted small"),
             html.Div([
                 html.Small([
                     html.B("¡Importante!"),
@@ -500,15 +491,13 @@ def update_liga(df, mes_seleccionado):
                 html.Span("● Top Anual (6) ", className="text-info me-3 small"),
                 html.Span("● Top Asistencia (2) ", className="text-warning small")
             ], className="text-center mb-3"),
-            dbc.Table([html.Thead(html.Tr(header)), html.Tbody(rows)], 
+            dbc.Table([html.Thead(html.Tr(header)), html.Tbody(rows)],
                       bordered=True, hover=True, responsive=True, size="sm", style={'font-size': '12px'})
         ])
 
-    # ==========================================
-    # LÓGICA 2: TABLAS MENSUALES
-    # ==========================================
     df_mes = df[(df['Mes'] == mes_seleccionado) & (df['Liga'].astype(str).str.lower().str.strip() == 'si')].copy()
-    if df_mes.empty: return html.Div(f"Sin datos para {mes_seleccionado}", className="text-center p-4 mt-5")
+    if df_mes.empty:
+        return html.Div(f"Sin datos para {mes_seleccionado}", className="text-center p-4 mt-5")
 
     stats_mes = df_mes.groupby('Jugador').agg(
         Torneos_Ganados=('Standing', lambda x: (x == 1).sum()),
@@ -529,19 +518,18 @@ def update_liga(df, mes_seleccionado):
     resumen = pd.concat([tabla_puntos, tabla_mazos], axis=1)
     resumen['Asistencia'] = df_mes.groupby('Jugador')['Fecha'].nunique()
     resumen['Puntos Totales'] = tabla_puntos.apply(lambda r: sum(sorted(r.values, reverse=True)[:4]), axis=1) + resumen['Asistencia']
-    
-    # ORDEN MENSUAL: Puntos Totales > Asistencia > %VPO > %JG > %JGO
+
     resumen = resumen.join(stats_mes).sort_values(
-        by=['Puntos Totales', 'Asistencia', 'Torneos_Ganados','VPO_Prom', 'JG_Prom', 'JGO_Prom'],
+        by=['Puntos Totales', 'Asistencia', 'Torneos_Ganados', 'VPO_Prom', 'JG_Prom', 'JGO_Prom'],
         ascending=[False, False, False, False, False, False]
     ).reset_index()
-    
+
     resumen.insert(0, 'Posición', range(1, len(resumen) + 1))
     resumen.rename(columns={'Torneos_Ganados': 'Torneos Ganados', 'VPO_Prom': '%VPO', 'JG_Prom': '%JG', 'JGO_Prom': '%JGO'}, inplace=True)
-    
+
     cols_f = [f"Fecha {i+1}" for i in range(len(fechas))]
     orden = ['Posición', 'Jugador'] + cols_f + ['Asistencia', 'Puntos Totales', 'Torneos Ganados', '%VPO', '%JG', '%JGO'] + [f"Mazo {c}" for c in cols_f]
-    
+
     rows = []
     for i, row in resumen.iterrows():
         clase = "table-warning fw-bold" if (row['Posición'] == 1 and len(fechas) >= 4) else ""
@@ -557,8 +545,10 @@ def update_liga(df, mes_seleccionado):
 
     return html.Div([
         html.H4(f"Detalle Liga: {mes_seleccionado}", className="text-center mb-4"),
-        dbc.Table([html.Thead(html.Tr([html.Th(col, className="text-center") for col in orden])), html.Tbody(rows)], bordered=True, hover=True, responsive=True, size="sm", style={'font-size': '12px'})
+        dbc.Table([html.Thead(html.Tr([html.Th(col, className="text-center") for col in orden])), html.Tbody(rows)],
+                  bordered=True, hover=True, responsive=True, size="sm", style={'font-size': '12px'})
     ])
+
 
 def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top=20):
     if df.empty:
@@ -581,9 +571,7 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
 
     if filtro == "fecha_puntual":
         df = df.copy()
-        # Calculamos puntos para esta vista
         df['Puntos'] = (df['Wins'] * 3) + df['Draws']
-        # Ordenamos por Standing (columna del Excel)
         df_tabla = df.sort_values('Standing', ascending=True)
         fecha_formateada = pd.to_datetime(fecha_unica).strftime("%d-%m-%Y")
 
@@ -601,11 +589,8 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
 
         rows = []
         for _, row in df_tabla.iterrows():
-            # Usamos 'Standing' para el estilo y la posición
             pos = row['Standing']
             clase_fila = "table-warning fw-bold" if pos == 1 else ""
-            
-            # Construimos las celdas manualmente para evitar el error de orden_final
             rows.append(html.Tr([
                 html.Td(int(pos), className="text-center"),
                 html.Td(row['Jugador'] if 'Jugador' in row else "-"),
@@ -618,20 +603,19 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
 
         return html.Div([
             html.H5(f"Resultados del Torneo: {fecha_formateada}", className="text-center mb-3"),
-            dbc.Table(table_header + [html.Tbody(rows)], 
+            dbc.Table(table_header + [html.Tbody(rows)],
                       bordered=True, hover=True, striped=True, responsive=True, size="sm")
         ])
     else:
-        # Gráfico de barras (se mantiene igual)
         fig = go.Figure(go.Bar(
             x=conteo['Freq'],
             y=conteo['Arquetipo'],
             orientation='h',
             marker_color='dodgerblue'
         ))
-        
+
         title = (evento if filtro == "evento" else f"Mazos desde {start_date} a {end_date}")
-        
+
         fig.update_layout(
             title=title,
             xaxis_title="Apariciones",
@@ -642,11 +626,12 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
         )
         return dcc.Graph(figure=fig)
 
+
 def update_top_distribution(df, top_type):
     stats = df.groupby('Arquetipo')[top_type].sum().reset_index()
     stats.columns = ['Arquetipo', 'Count']
     stats = stats[stats['Count'] > 0].sort_values('Count', ascending=False)
-    
+
     if stats.empty:
         return dcc.Graph(figure=go.Figure().update_layout(
             title="No hay datos disponibles",
@@ -655,7 +640,7 @@ def update_top_distribution(df, top_type):
             plot_bgcolor='white',
             paper_bgcolor='white'
         ))
-    
+
     fig = go.Figure(go.Pie(
         labels=stats['Arquetipo'],
         values=stats['Count'],
@@ -665,9 +650,9 @@ def update_top_distribution(df, top_type):
         hole=0.3,
         hoverinfo='label+value+percent',
         texttemplate='%{label}<br>%{value} (%{percent})',
-        pull=[0.1 if i == 0 else 0 for i in range(len(stats))] 
+        pull=[0.1 if i == 0 else 0 for i in range(len(stats))]
     ))
-    
+
     title = f"Distribución de {top_type} - {len(df['Fecha'].unique())} torneos"
     fig.update_layout(
         title=dict(text=title, x=0.5, xanchor='center'),
@@ -684,8 +669,9 @@ def update_top_distribution(df, top_type):
         height=650,
         margin=dict(t=100, b=100)
     )
-    
+
     return dcc.Graph(figure=fig)
+
 
 def update_conversion_table(df, top_type):
     if df.empty:
@@ -694,22 +680,22 @@ def update_conversion_table(df, top_type):
     label_exito = "Torneos ganados" if top_type == "Top1" else "Podios"
 
     stats = df.groupby('Arquetipo').agg({
-        'Standing': 'count', 
+        'Standing': 'count',
         top_type: 'sum'
     }).reset_index()
-    
+
     stats.columns = ['Arquetipo', 'Jugadores', 'Tops']
-    
+
     total_j = stats['Jugadores'].sum()
     total_t = stats['Tops'].sum()
-    
+
     stats['Meta %'] = (stats['Jugadores'] / total_j * 100).round(2)
     stats['Top %'] = (stats['Tops'] / total_t * 100).round(2)
     stats['Neto'] = (stats['Top %'] - stats['Meta %']).round(2)
     stats['Factor %'] = (stats['Tops'] / stats['Jugadores'] * 100).round(2)
     stats = stats[stats['Tops'] >= 1]
     stats = stats.sort_values('Neto', ascending=False)
-    
+
     table_header = [
         html.Thead(html.Tr([
             html.Th("Arquetipo"),
@@ -718,7 +704,7 @@ def update_conversion_table(df, top_type):
             html.Th(f"% presencia en el Meta | % de {label_exito}")
         ]))
     ]
-    
+
     rows = []
     for _, row in stats.iterrows():
         if row['Neto'] > 0:
@@ -737,36 +723,37 @@ def update_conversion_table(df, top_type):
             html.Td(f"{row['Factor %']:.2f}%"),
             html.Td(
                 html.Small(
-                    f"Meta: {row['Meta %']}% ({int(row['Jugadores'])}) | {label_exito}: {row['Top %']}% ({int(row['Tops'])})", 
+                    f"Meta: {row['Meta %']}% ({int(row['Jugadores'])}) | {label_exito}: {row['Top %']}% ({int(row['Tops'])})",
                     className="text-muted",
                     style={'font-size': '0.9rem'}
                 )
             )
         ]))
-    
+
     return dbc.Table(table_header + [html.Tbody(rows)], bordered=True, hover=True, striped=True, responsive=True)
+
 
 def update_evolution(df, n_top=5):
     df = df.copy()
     df['Mes'] = df['Fecha'].dt.to_period('M').dt.to_timestamp()
-    
+
     monthly_counts = df.groupby(['Mes', 'Arquetipo']).size().unstack(fill_value=0)
     monthly_pct = monthly_counts.div(monthly_counts.sum(axis=1), axis=0) * 100
-    
+
     top_mazos = monthly_counts.sum().sort_values(ascending=False).head(n_top).index
     monthly_top_pct = monthly_pct[top_mazos]
     monthly_top_pct = monthly_top_pct[monthly_top_pct.sum(axis=1) > 0]
     monthly_top_pct['Acumulado Top'] = monthly_top_pct.sum(axis=1)
-    
+
     fig = go.Figure()
     colors = px.colors.qualitative.Plotly
 
     MESES_ES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+        1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+        5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+        9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
     }
-    
+
     for i, mazo in enumerate(top_mazos):
         fig.add_trace(go.Scatter(
             x=monthly_top_pct.index,
@@ -807,7 +794,7 @@ def update_evolution(df, n_top=5):
         ),
         customdata=[MESES_ES[mes.month] for mes in monthly_top_pct.index]
     ))
-    
+
     for evento, fecha_str in eventos.items():
         try:
             fecha_dt = pd.to_datetime(fecha_str)
@@ -823,21 +810,20 @@ def update_evolution(df, n_top=5):
                     annotation_font_size=10,
                     annotation_bgcolor="rgba(255,255,255,0.9)"
                 )
-        except Exception as e:
+        except Exception:
             continue
-    
+
     ticktext = []
     prev_year = None
     for fecha in monthly_top_pct.index:
         current_year = fecha.strftime("%Y")
-        month_name = fecha.strftime("%B").capitalize() 
-    
+        month_name = fecha.strftime("%B").capitalize()
         if current_year != prev_year:
             ticktext.append(f"{month_name}\n{current_year}")
             prev_year = current_year
         else:
             ticktext.append(month_name)
-    
+
     fig.update_xaxes(
         tickvals=monthly_top_pct.index,
         ticktext=ticktext,
@@ -848,7 +834,7 @@ def update_evolution(df, n_top=5):
             monthly_top_pct.index.max() + pd.Timedelta(days=15)
         ]
     )
-    
+
     fig.update_layout(
         title=f'Porcentaje Mensual de Juego (Top {n_top} mazos)',
         xaxis_title='Mes',
@@ -857,24 +843,25 @@ def update_evolution(df, n_top=5):
         plot_bgcolor='white',
         paper_bgcolor='white',
         height=650,
-        legend=dict(  
+        legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.3,  
+            y=-0.3,
             xanchor="center",
             x=0.5,
-            font=dict(size=10)  
+            font=dict(size=10)
         ),
-        margin=dict(b=150, t=60, l=60, r=40)  
+        margin=dict(b=150, t=60, l=60, r=40)
     )
-    
+
     fig.update_yaxes(
         rangemode="tozero",
         ticksuffix="%",
         gridcolor='rgba(0,0,0,0.1)'
     )
-    
+
     return dcc.Graph(figure=fig)
+
 
 def update_winrate(df, min_juegos):
     stats = df.groupby('Arquetipo').agg({
@@ -885,28 +872,28 @@ def update_winrate(df, min_juegos):
         'Top1': 'sum',
         'Top3': 'sum'
     }).reset_index()
-    
+
     stats.columns = ['Arquetipo', 'players', 'win', 'lose', 'draw', 'top1', 'top3']
     stats['n'] = stats['win'] + stats['lose'] + stats['draw']
     stats = stats[stats['n'] >= min_juegos]
-    
+
     if stats.empty:
         return dcc.Graph(figure=go.Figure().update_layout(
             title=f"No hay datos con ≥{min_juegos} juegos",
             xaxis={"visible": False},
             yaxis={"visible": False}
         ))
-    
+
     stats['perwinrate'] = round(stats['win'] / stats['n'] * 100, 2)
     stats['perwinrate2'] = stats['win'] / stats['n']
-    
+
     z = norm.ppf(1 - 0.05/2)
     stats['upper'] = 100 * (stats['perwinrate2'] + z * np.sqrt(stats['perwinrate2'] * (1 - stats['perwinrate2']) / stats['n']))
     stats['lower'] = 100 * (stats['perwinrate2'] - z * np.sqrt(stats['perwinrate2'] * (1 - stats['perwinrate2']) / stats['n']))
     stats = stats.sort_values('perwinrate')
-    
+
     fig = go.Figure()
-    
+
     fig.add_trace(go.Scatter(
         x=stats['Arquetipo'],
         y=stats['perwinrate'],
@@ -917,7 +904,7 @@ def update_winrate(df, min_juegos):
               for _, row in stats.iterrows()],
         name='Winrate'
     ))
-    
+
     for _, row in stats.iterrows():
         fig.add_shape(
             type='line',
@@ -925,11 +912,11 @@ def update_winrate(df, min_juegos):
             x1=row['Arquetipo'], y1=row['upper'],
             line=dict(color='rgba(55, 128, 191, 0.7)', width=1.5)
         )
-    
+
     fig.add_hline(y=50, line_dash="dash", line_color="black")
     fig.add_hline(y=40, line_dash="dash", line_color="red")
     fig.add_hline(y=60, line_dash="dash", line_color="red")
-    
+
     fig.update_layout(
         title=f"Winrate + IC 95% por Mazo (juegos ≥{min_juegos})",
         plot_bgcolor='white',
@@ -951,8 +938,9 @@ def update_winrate(df, min_juegos):
         height=700,
         margin=dict(b=100)
     )
-    
+
     return dcc.Graph(figure=fig)
+
 
 def update_winrate_juego(df, color_opcion):
     stats = df.groupby('Arquetipo').agg({
@@ -963,25 +951,25 @@ def update_winrate_juego(df, color_opcion):
         'Top1': 'sum',
         'Top3': 'sum'
     }).reset_index()
-    
+
     stats.columns = ['Arquetipo', 'players', 'win', 'lose', 'draw', 'top1', 'top3']
     stats['n'] = stats['win'] + stats['lose'] + stats['draw']
     stats['perwinrate'] = round(stats['win'] / stats['n'] * 100, 2)
     stats['perjuego'] = round(stats['n'] / stats['n'].sum() * 100, 2)
     stats = stats[stats['perjuego'] > 1].reset_index(drop=True)
-    
+
     color_var = 'top1' if color_opcion == "Top1" else 'top3'
     color_title = "Torneos ganados" if color_opcion == "Top1" else "Podios (Top3)"
-    
+
     fig = go.Figure()
 
     valores_unicos = sorted(stats[color_var].unique())
     mapeo_colores = {}
     valores_mayores_cero = [v for v in valores_unicos if v > 0]
-    
+
     if 0 in valores_unicos:
         mapeo_colores[0] = 'rgb(31, 119, 180)'
-        
+
     if valores_mayores_cero:
         escala_rojos = px.colors.sequential.Reds[2:]
         pasos_rojos = [escala_rojos[i] for i in range(len(valores_mayores_cero))]
@@ -999,26 +987,26 @@ def update_winrate_juego(df, color_opcion):
         hoverinfo='text',
         text=[f"Arquetipo: {row['Arquetipo']}<br>Winrate: {row['perwinrate']}%<br>Juegos: {row['n']}<br>% Juego: {row['perjuego']}%<br>Top1: {row['top1']}<br>Top3: {row['top3']}"
               for _, row in stats.iterrows()],
-        showlegend=False, 
+        showlegend=False,
         name=''
     ))
-    
+
     for valor_color in valores_unicos:
         fig.add_trace(go.Scatter(
-            x=[None],  
+            x=[None],
             y=[None],
             mode='markers',
             marker=dict(
-                size=12,  
+                size=12,
                 color=mapeo_colores[valor_color],
             ),
             name=f'{color_title}: {valor_color}'
         ))
-    
+
     fig.add_hline(y=50, line_dash="dash", line_color="black")
     fig.add_hline(y=40, line_dash="dash", line_color="red")
     fig.add_hline(y=60, line_dash="dash", line_color="red")
-    
+
     annotations = []
     for _, row in stats.iterrows():
         annotations.append(dict(
@@ -1030,7 +1018,7 @@ def update_winrate_juego(df, color_opcion):
             xanchor='center',
             yanchor='bottom'
         ))
-    
+
     fig.update_layout(
         plot_bgcolor='white',
         paper_bgcolor='white',
@@ -1050,8 +1038,9 @@ def update_winrate_juego(df, color_opcion):
         showlegend=True,
         legend_title_text=color_title
     )
-    
+
     return dcc.Graph(figure=fig)
+
 
 def update_heatmap(df_filtrado, min_juegos=30):
     if df_filtrado.empty:
@@ -1060,47 +1049,47 @@ def update_heatmap(df_filtrado, min_juegos=30):
             xaxis={"visible": False},
             yaxis={"visible": False}
         ))
-    
+
     try:
         df_working = df_filtrado.copy()
         df_working['cruce'] = df_working.apply(
-            lambda row: ' - '.join(sorted([str(row['mazo1']), str(row['mazo2'])])), 
+            lambda row: ' - '.join(sorted([str(row['mazo1']), str(row['mazo2'])])),
             axis=1
         )
-        
+
         resultados = []
         for _, row in df_working.iterrows():
             total_partidas = row['v1'] + row['v2']
             resultados.append({'mazo': row['mazo1'], 'vs_mazo': row['mazo2'], 'victorias': row['v1'], 'total_partidas': total_partidas, 'cruce': row['cruce']})
             resultados.append({'mazo': row['mazo2'], 'vs_mazo': row['mazo1'], 'victorias': row['v2'], 'total_partidas': total_partidas, 'cruce': row['cruce']})
-        
+
         heatmap_data = pd.DataFrame(resultados)
         heatmap_stats = heatmap_data.groupby(['mazo', 'vs_mazo']).agg({'victorias': 'sum', 'total_partidas': 'sum'}).reset_index()
         heatmap_stats['winrate'] = round((heatmap_stats['victorias'] / heatmap_stats['total_partidas'].replace(0, 1)) * 100, 1)
-        
+
         mazo_counts = heatmap_data.groupby('mazo')['total_partidas'].sum()
         mazos_validos = mazo_counts[mazo_counts >= min_juegos].index
-        
+
         heatmap_stats = heatmap_stats[heatmap_stats['mazo'].isin(mazos_validos) & heatmap_stats['vs_mazo'].isin(mazos_validos)]
         all_mazos = sorted(pd.unique(pd.concat([heatmap_stats['mazo'], heatmap_stats['vs_mazo']])))
         complete_grid = pd.DataFrame(index=all_mazos, columns=all_mazos)
-        
+
         for _, row in heatmap_stats.iterrows():
-            if row['mazo'] != row['vs_mazo']:  
+            if row['mazo'] != row['vs_mazo']:
                 complete_grid.loc[row['mazo'], row['vs_mazo']] = row['winrate']
-        
+
         text_matrix = []
         hover_matrix = []
         for mazo_y in complete_grid.index:
             row_text = []
             row_hover = []
             for mazo_x in complete_grid.columns:
-                if mazo_y == mazo_x:  
+                if mazo_y == mazo_x:
                     row_text.append("")
                     row_hover.append("")
                 else:
                     value = complete_grid.loc[mazo_y, mazo_x]
-                    if pd.notna(value):  
+                    if pd.notna(value):
                         match_data = heatmap_stats[(heatmap_stats['mazo'] == mazo_y) & (heatmap_stats['vs_mazo'] == mazo_x)]
                         if not match_data.empty:
                             v = int(match_data.iloc[0]['victorias'])
@@ -1110,15 +1099,15 @@ def update_heatmap(df_filtrado, min_juegos=30):
                         else:
                             row_text.append("")
                             row_hover.append("")
-                    else:  
+                    else:
                         row_text.append("")
                         row_hover.append("")
             text_matrix.append(row_text)
             hover_matrix.append(row_hover)
-        
+
         num_mazos = len(all_mazos)
         tamano_fuente = max(8, 40 / num_mazos**0.5)
-        
+
         heatmap = go.Heatmap(
             x=all_mazos,
             y=all_mazos,
@@ -1130,10 +1119,10 @@ def update_heatmap(df_filtrado, min_juegos=30):
             hovertext=hover_matrix,
             text=text_matrix,
             showscale=False,
-            texttemplate="%{text}",  
+            texttemplate="%{text}",
             textfont={"size": tamano_fuente}
         )
-        
+
         layout = go.Layout(
             title=f'Winrates entre Mazos (Mínimo {min_juegos} partidas por mazo)',
             plot_bgcolor='white',
@@ -1152,15 +1141,16 @@ def update_heatmap(df_filtrado, min_juegos=30):
             margin=dict(l=100, r=50, t=100, b=100),
             height=max(600, num_mazos * 30)
         )
-        
+
         return dcc.Graph(figure={'data': [heatmap], 'layout': layout})
-    
+
     except Exception as e:
         return dcc.Graph(figure=go.Figure().update_layout(
             title=f"Error al generar heatmap: {str(e)}",
             xaxis={"visible": False},
             yaxis={"visible": False}
         ))
+
 
 if __name__ == '__main__':
     app.run(debug=True)
