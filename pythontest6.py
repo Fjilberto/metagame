@@ -386,6 +386,7 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
 
 # ========== FUNCIONES PARA ACTUALIZAR GRÁFICOS ==========
 
+
 def contar_martes_del_mes(fecha):
     """
     Dada una fecha o string de fecha, calcula cuántos martes 
@@ -433,13 +434,11 @@ def update_liga(df, mes_seleccionado):
         for m in meses_cols:
             df_m = df_liga[df_liga['Mes'] == m].copy()
 
-            # CONTEO SEGURO: Normalizamos la fecha a día evitando cualquier desfase por horas/minutos
             fechas_jugadas = pd.to_datetime(df_m['Fecha']).dt.strftime('%Y-%m-%d').nunique()
             
             fecha_referencia = df_m['Fecha'].iloc[0]
             fechas_esperadas = contar_martes_del_mes(fecha_referencia)
 
-            # MES TERMINADO AUTOMÁTICAMENTE (Solo si las fechas jugadas alcanzan el total de martes del mes)
             if fechas_jugadas >= fechas_esperadas:
                 meses_terminados.append(m)
 
@@ -488,7 +487,6 @@ def update_liga(df, mes_seleccionado):
         columnas_finales = ['Posición', 'Jugador'] + meses_cols + ['Puntaje Total', 'Asistencia', 'Ligas Ganadas', 'Torneos Ganados', '%VPO', '%JG', '%JGO']
         header = [html.Th(c, className="text-center align-middle") for c in columnas_finales]
 
-        # Lógica de asignación de cupos (Verde para clasificados reales de meses CERRADOS)
         clasificados_mes = []
         for m in meses_terminados:
             ranking = ranking_mensual_dict[m]
@@ -541,51 +539,70 @@ def update_liga(df, mes_seleccionado):
     if df_mes.empty:
         return html.Div(f"Sin datos para {mes_seleccionado}", className="text-center p-4 mt-5")
 
+    stats_mes = df_mes.groupby('Jugador').agg(
+        Torneos_Ganados=('Standing', lambda x: (x == 1).sum()),
+        VPO_Prom=('%VPO', 'mean'),
+        JG_Prom=('%JG', 'mean'),
+        JGO_Prom=('%JGO', 'mean')
+    )
+
     df_mes['Puntos_F'] = (df_mes['Wins'] * 3) + df_mes['Draws']
     fechas = sorted(df_mes['Fecha'].unique())
     mapeo = {f: f"Fecha {i+1}" for i, f in enumerate(fechas)}
     df_mes['N_Fecha'] = df_mes['Fecha'].map(mapeo)
 
     tabla_puntos = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Puntos_F').fillna(0)
-    resumen = tabla_puntos.copy()
+    tabla_mazos = df_mes.pivot(index='Jugador', columns='N_Fecha', values='Arquetipo').fillna("-")
+    tabla_mazos.columns = [f"Mazo {col}" for col in tabla_mazos.columns]
 
+    resumen = pd.concat([tabla_puntos, tabla_mazos], axis=1)
     resumen['Asistencia'] = df_mes.groupby('Jugador')['Fecha'].nunique()
     resumen['Puntos Totales'] = tabla_puntos.apply(lambda r: sum(sorted(r.values, reverse=True)[:4]), axis=1) + resumen['Asistencia']
 
-    resumen = resumen.sort_values('Puntos Totales', ascending=False).reset_index()
-    resumen.insert(0, 'Posición', range(1, len(resumen) + 1))
+    resumen = resumen.join(stats_mes).sort_values(
+        by=['Puntos Totales', 'Asistencia', 'Torneos_Ganados', 'VPO_Prom', 'JG_Prom', 'JGO_Prom'],
+        ascending=[False, False, False, False, False, False]
+    ).reset_index()
 
-    # CONTEO SEGURO MENSUAL: Limpieza absoluta del conteo de fechas en el mes seleccionado
+    resumen.insert(0, 'Posición', range(1, len(resumen) + 1))
+    resumen.rename(columns={'Torneos_Ganados': 'Torneos Ganados', 'VPO_Prom': '%VPO', 'JG_Prom': '%JG', 'JGO_Prom': '%JGO'}, inplace=True)
+
+    cols_f = [f"Fecha {i+1}" for i in range(len(fechas))]
+    orden_columnas = ['Posición', 'Jugador'] + cols_f + ['Asistencia', 'Puntos Totales', 'Torneos Ganados', '%VPO', '%JG', '%JGO'] + [f"Mazo {c}" for c in cols_f]
+
     fechas_jugadas_mes = pd.to_datetime(df_mes['Fecha']).dt.strftime('%Y-%m-%d').nunique()
-    
-    mes_terminado = (
-        fechas_jugadas_mes
-        >=
-        contar_martes_del_mes(df_mes['Fecha'].iloc[0])
-    )
+    mes_terminado = (fechas_jugadas_mes >= contar_martes_del_mes(df_mes['Fecha'].iloc[0]))
+
+    # CORRECCIÓN ENCABEZADOS: Centrados y alineados al medio exactamente igual que la acumulada
+    header_mensual = [html.Th(col, className="text-center align-middle") for col in orden_columnas]
 
     rows = []
     for _, row in resumen.iterrows():
-        # El primer lugar solo brilla en amarillo si el mes alcanzó matemáticamente todos sus martes
         clase = "table-warning fw-bold" if row['Posición'] == 1 and mes_terminado else ""
 
-        rows.append(
-            html.Tr(
-                [html.Td(row[c], className="text-center") for c in resumen.columns],
-                className=clase
-            )
-        )
+        celdas = []
+        for c in orden_columnas:
+            val = row[c]
+            if c in ['%VPO', '%JG', '%JGO']:
+                val = round(val, 2)
+            elif isinstance(val, (int, float)) and c not in ['Jugador', 'Posición']:
+                val = int(val)
+            
+            celdas.append(html.Td(val, className="text-center align-middle" + (" fw-bold text-primary" if c == "Puntos Totales" else "")))
+            
+        rows.append(html.Tr(celdas, className=clase))
 
     return html.Div([
         html.H4(f"Detalle Liga: {mes_seleccionado}", className="text-center mb-4"),
         dbc.Table(
             [
-                html.Thead(html.Tr([html.Th(c) for c in resumen.columns])),
+                html.Thead(html.Tr(header_mensual)),
                 html.Tbody(rows)
             ],
-            bordered=True, hover=True, responsive=True, size="sm"
+            bordered=True, hover=True, responsive=True, size="sm", style={'font-size': '12px'}
         )
     ])
+
 
 def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top=20):
     if df.empty:
