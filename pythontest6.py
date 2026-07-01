@@ -451,7 +451,23 @@ def update_liga(df, mes_seleccionado):
                 total_m = sum(sorted(row.values, reverse=True)[:4]) + asistencia_m.get(jugador, 0)
                 puntos_mes_dict[jugador] = total_m
 
-            ranking_mensual_dict[m] = pd.Series(puntos_mes_dict).sort_values(ascending=False)
+            # ---- CORRECCIÓN DE DESEMPATE MENSUAL PARA LA ACUMULADA ----
+            stats_mes_aux = df_m.groupby('Jugador').agg(
+                Torneos_Ganados_M=('Standing', lambda x: (x == 1).sum()),
+                VPO_M=('%VPO', 'mean'),
+                JG_M=('%JG', 'mean'),
+                JGO_M=('%JGO', 'mean')
+            )
+            df_desempate = pd.DataFrame(pd.Series(puntos_mes_dict, name='Puntos_M')).join(stats_mes_aux)
+            df_desempate['Asistencia_M'] = df_desempate.index.map(asistencia_m).fillna(0)
+            
+            df_desempate = df_desempate.sort_values(
+                by=['Puntos_M', 'Asistencia_M', 'Torneos_Ganados_M', 'VPO_M', 'JG_M', 'JGO_M'],
+                ascending=[False, False, False, False, False, False]
+            )
+            ranking_mensual_dict[m] = df_desempate['Puntos_M']
+            # -----------------------------------------------------------
+            
             resultados_por_jugador.append(pd.Series(puntos_mes_dict, name=m))
 
         df_acumulado = pd.concat(resultados_por_jugador, axis=1).fillna(0)
@@ -459,7 +475,7 @@ def update_liga(df, mes_seleccionado):
 
         ligas_ganadas = {}
         for m in meses_terminados:
-            ganador = ranking_mensual_dict[m].idxmax()
+            ganador = ranking_mensual_dict[m].index[0] # Al estar ordenado con desempates, el index[0] es el ganador real
             ligas_ganadas[ganador] = ligas_ganadas.get(ganador, 0) + 1
 
         df_acumulado['Ligas Ganadas'] = df_acumulado.index.map(ligas_ganadas).fillna(0)
@@ -573,7 +589,6 @@ def update_liga(df, mes_seleccionado):
     fechas_jugadas_mes = pd.to_datetime(df_mes['Fecha']).dt.strftime('%Y-%m-%d').nunique()
     mes_terminado = (fechas_jugadas_mes >= contar_martes_del_mes(df_mes['Fecha'].iloc[0]))
 
-    # CORRECCIÓN ENCABEZADOS: Centrados y alineados al medio exactamente igual que la acumulada
     header_mensual = [html.Th(col, className="text-center align-middle") for col in orden_columnas]
 
     rows = []
