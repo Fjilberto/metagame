@@ -525,7 +525,7 @@ def update_liga(df, mes_seleccionado):
                 val = row[col]
                 if col in ['%VPO', '%JG', '%JGO']: val = round(val, 2)
                 elif isinstance(val, (int, float)) and col != 'Jugador': val = int(val)
-                celdas.append(html.Td(val, className="text-center align-middle"))
+                celdas.append(html.Td(val, className="text-center align-middle" + (" fw-bold text-primary" if col == "Puntaje Total" else "")))
             rows.append(html.Tr(celdas, className=clase_fila))
 
         return html.Div([
