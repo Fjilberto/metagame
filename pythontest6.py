@@ -511,9 +511,17 @@ def update_liga(df, mes_seleccionado):
                     clasificados_mes.append(j_m)
                     break
 
-        clasificados_anual = [j for j in df_acumulado['Jugador'] if j not in clasificados_mes][:6]
-        clasificados_asistencia = [j for j in df_acumulado.sort_values('Asistencia', ascending=False)['Jugador']
-                                   if j not in clasificados_mes and j not in clasificados_anual][:2]
+        # 1. Primero seleccionamos a los 2 por asistencia (excluyendo solo a los ganadores de mes)
+        clasificados_asistencia = [
+            j for j in df_acumulado.sort_values('Asistencia', ascending=False)['Jugador']
+            if j not in clasificados_mes
+        ][:2]
+
+        # 2. Luego seleccionamos a los 6 de la tabla anual (excluyendo ganadores de mes Y a los 2 de asistencia)
+        clasificados_anual = [
+            j for j in df_acumulado['Jugador'] 
+            if j not in clasificados_mes and j not in clasificados_asistencia
+        ][:6]
 
         rows = []
         for _, row in df_acumulado.iterrows():
