@@ -36,7 +36,8 @@ eventos = {
     "Mazos jugados desde baneo de High Tide": datetime(2025, 11, 10),
     "Mazos jugados desde baneo/desbaneo Deadly, Tide y otros": datetime(2025, 3, 31),
     "Mazos jugados desde baneo de All That Glitters": datetime(2024, 5, 13),
-    "Mazos jugados desde baneo de Monastery Swiftspear": datetime(2023, 12, 4)
+    "Mazos jugados desde baneo de Monastery Swiftspear": datetime(2023, 12, 4),
+    "Mazos jugados Liga 2026": "LIGA_2026"
 }
 
 # ========== UI ==========
@@ -313,6 +314,18 @@ def update_filtros_visibilidad(tab):
             True, True, True, True, True, True, True
         )
 
+def filtrar_por_evento(df, clave_evento):
+    val = eventos[clave_evento]
+    
+    if val == "LIGA_2026":
+        # Aseguramos formato datetime en la columna Fecha para extraer el año
+        fechas_dt = pd.to_datetime(df['Fecha'], format='%Y.%m.%d', errors='coerce')
+        es_2026 = fechas_dt.dt.year == 2026
+        es_liga = df['Liga'].astype(str).str.lower().str.strip() == 'si'
+        return df[es_2026 & es_liga].copy()
+    else:
+        # Lógica habitual por fecha de corte
+        return df[df['Fecha'] >= val].copy()
 
 @app.callback(
     Output("tab-content", "children"),
@@ -336,8 +349,7 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
 
     if tab == "metagame":
         if filtro_metagame == "evento":
-            fecha_corte = eventos[evento]
-            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+            df_filtrado = filtrar_por_evento(meta, evento)
         elif filtro_metagame == "fechas":
             df_filtrado = meta[(meta['Fecha'] >= start_date) & (meta['Fecha'] <= end_date)]
         else:
@@ -345,44 +357,43 @@ def update_tab_content(tab, filtro_metagame=None, filtro_winrate=None, filtro_he
         return update_metagame(df_filtrado, filtro_metagame, evento, start_date, end_date, fecha_unica, n_top)
 
     elif tab == "conversion_table":
-        fecha_corte = eventos[evento]
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        df_filtrado = filtrar_por_evento(meta, evento)
         return update_conversion_table(df_filtrado, color_opcion)
 
     elif tab == "evolution":
-        fecha_corte = eventos[evento]
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        df_filtrado = filtrar_por_evento(meta, evento)
         return update_evolution(df_filtrado, n_top_evolution)
 
     elif tab == "winrate":
         if filtro_winrate == "evento":
-            fecha_corte = eventos[evento]
-            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+            df_filtrado = filtrar_por_evento(meta, evento)
         else:
             df_filtrado = meta[(meta['Fecha'] >= start_date) & (meta['Fecha'] <= end_date)]
         return update_winrate(df_filtrado, min_juegos)
 
     elif tab == "winrate_juego":
         if filtro_winrate == "evento":
-            fecha_corte = eventos[evento]
-            df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+            df_filtrado = filtrar_por_evento(meta, evento)
         else:
             df_filtrado = meta[(meta['Fecha'] >= start_date) & (meta['Fecha'] <= end_date)]
         return update_winrate_juego(df_filtrado, color_opcion)
 
     elif tab == "heatmap":
-        fecha_corte = eventos[evento]
-        df_filtrado = cruces[cruces['fecha'] >= fecha_corte]
+        if eventos[evento] == "LIGA_2026":
+            fechas_dt = pd.to_datetime(cruces['fecha'], format='%Y.%m.%d', errors='coerce')
+            es_2026 = fechas_dt.dt.year == 2026
+            es_liga = cruces['Liga'].astype(str).str.lower().str.strip() == 'si' if 'Liga' in cruces.columns else True
+            df_filtrado = cruces[es_2026 & es_liga]
+        else:
+            df_filtrado = cruces[cruces['fecha'] >= eventos[evento]]
         return update_heatmap(df_filtrado, min_juegos)
 
     elif tab == "top_distribution":
-        fecha_corte = eventos[evento]
-        df_filtrado = meta[meta['Fecha'] >= fecha_corte]
+        df_filtrado = filtrar_por_evento(meta, evento)
         return update_top_distribution(df_filtrado, color_opcion)
 
     elif tab == "liga":
         return update_liga(meta, mes_liga)
-
 
 # ========== FUNCIONES PARA ACTUALIZAR GRÁFICOS ==========
 
@@ -626,7 +637,6 @@ def update_liga(df, mes_seleccionado):
         )
     ])
 
-
 def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top=20):
     if df.empty:
         return dcc.Graph(figure=go.Figure().update_layout(
@@ -644,7 +654,10 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
         top_mazos = conteo.head(n_top)
         otros_count = conteo['Freq'].iloc[n_top:].sum()
         otros = pd.DataFrame({'Arquetipo': ['Otros'], 'Freq': [otros_count]})
-        conteo = pd.concat([top_mazos, otros]).sort_values('Freq')
+        conteo = pd.concat([top_mazos, otros])
+
+    # Ordenamos de menor a mayor para que la barra más alta quede arriba
+    conteo = conteo.sort_values('Freq', ascending=True)
 
     if filtro == "fecha_puntual":
         df = df.copy()
@@ -684,30 +697,37 @@ def update_metagame(df, filtro, evento, start_date, end_date, fecha_unica, n_top
                       bordered=True, hover=True, striped=True, responsive=True, size="sm")
         ])
     else:
+        # Generar una paleta con un color distinto para cada barra
+        colores = px.colors.qualitative.Plotly * (len(conteo) // len(px.colors.qualitative.Plotly) + 1)
+        
         fig = go.Figure(go.Bar(
             x=conteo['Freq'],
             y=conteo['Arquetipo'],
             orientation='h',
-            marker_color='dodgerblue'
+            marker_color=colores[:len(conteo)],  # Un color por barra
+            text=conteo['Freq'],
+            textposition='outside',
+            hoverinfo='none'
         ))
 
         title = (evento if filtro == "evento" else f"Mazos desde {start_date} a {end_date}")
 
+        max_val = conteo['Freq'].max() if not conteo.empty else 10
         fig.update_layout(
             title=title,
             xaxis_title="Apariciones",
             yaxis_title="Mazos",
+            xaxis=dict(range=[0, max_val * 1.12]),
             plot_bgcolor='white',
             paper_bgcolor='white',
             height=700
         )
         return dcc.Graph(figure=fig)
 
-
 def update_top_distribution(df, top_type):
     stats = df.groupby('Arquetipo')[top_type].sum().reset_index()
     stats.columns = ['Arquetipo', 'Count']
-    stats = stats[stats['Count'] > 0].sort_values('Count', ascending=False)
+    stats = stats[stats['Count'] > 0].sort_values('Count', ascending=True)
 
     if stats.empty:
         return dcc.Graph(figure=go.Figure().update_layout(
@@ -718,37 +738,37 @@ def update_top_distribution(df, top_type):
             paper_bgcolor='white'
         ))
 
-    fig = go.Figure(go.Pie(
-        labels=stats['Arquetipo'],
-        values=stats['Count'],
-        textinfo='label+percent',
-        insidetextorientation='radial',
-        marker=dict(colors=px.colors.qualitative.Pastel),
-        hole=0.3,
-        hoverinfo='label+value+percent',
-        texttemplate='%{label}<br>%{value} (%{percent})',
-        pull=[0.1 if i == 0 else 0 for i in range(len(stats))]
+    # Definir la etiqueta del eje X dinámicamente
+    eje_x_label = "Torneos ganados" if top_type in ['Top1', 'Top 1'] else "Podios"
+
+    # Generar una paleta con un color distinto para cada barra
+    colores = px.colors.qualitative.Plotly * (len(stats) // len(px.colors.qualitative.Plotly) + 1)
+
+    fig = go.Figure(go.Bar(
+        x=stats['Count'],
+        y=stats['Arquetipo'],
+        orientation='h',
+        marker_color=colores[:len(stats)],  # Un color por barra
+        text=stats['Count'],
+        textposition='outside',
+        hoverinfo='none'
     ))
 
-    title = f"Distribución de {top_type} - {len(df['Fecha'].unique())} torneos"
+    title = f"Distribución de {eje_x_label} - {len(df['Fecha'].unique())} torneos"
+    max_val = stats['Count'].max() if not stats.empty else 10
+
     fig.update_layout(
         title=dict(text=title, x=0.5, xanchor='center'),
+        xaxis_title=eje_x_label,
+        yaxis_title="Mazos",
+        xaxis=dict(range=[0, max_val * 1.12]),
         plot_bgcolor='white',
         paper_bgcolor='white',
-        showlegend=True,
-        legend=dict(
-            orientation="v",
-            yanchor="middle",
-            y=0.5,
-            xanchor="left",
-            x=1.02,
-        ),
         height=650,
         margin=dict(t=100, b=100)
     )
 
     return dcc.Graph(figure=fig)
-
 
 def update_conversion_table(df, top_type):
     if df.empty:
@@ -808,7 +828,6 @@ def update_conversion_table(df, top_type):
         ]))
 
     return dbc.Table(table_header + [html.Tbody(rows)], bordered=True, hover=True, striped=True, responsive=True)
-
 
 def update_evolution(df, n_top=5):
     df = df.copy()
@@ -939,7 +958,6 @@ def update_evolution(df, n_top=5):
 
     return dcc.Graph(figure=fig)
 
-
 def update_winrate(df, min_juegos):
     stats = df.groupby('Arquetipo').agg({
         'Standing': 'count',
@@ -1017,7 +1035,6 @@ def update_winrate(df, min_juegos):
     )
 
     return dcc.Graph(figure=fig)
-
 
 def update_winrate_juego(df, color_opcion):
     stats = df.groupby('Arquetipo').agg({
@@ -1117,7 +1134,6 @@ def update_winrate_juego(df, color_opcion):
     )
 
     return dcc.Graph(figure=fig)
-
 
 def update_heatmap(df_filtrado, min_juegos=30):
     if df_filtrado.empty:
